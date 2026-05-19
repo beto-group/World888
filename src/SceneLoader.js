@@ -187,6 +187,16 @@ async function sceneLoader({ canvasRef, glbConfig = {
         const minSpeed = 0.001;
         const maxSpeed = 0.01;
 
+        // Deterministic speed seeded by mesh name — MUST match player_viewer.html
+        function seededSpeed(name) {
+          let hash = 0;
+          for (let i = 0; i < name.length; i++) {
+            hash = (Math.imul(31, hash) + name.charCodeAt(i)) | 0;
+          }
+          const t = Math.abs(hash % 10000) / 10000;
+          return minSpeed + t * (maxSpeed - minSpeed);
+        }
+
         // console.log(`--- Starting mesh selection for rotation and TransformNode creation ---`);
         let meshesFoundForRotation = 0;
 
@@ -204,7 +214,7 @@ async function sceneLoader({ canvasRef, glbConfig = {
                 mesh.setParent(rotator);
                 // console.log(`    -> Reparented mesh "${mesh.name}" to new rotator "${rotator.name}".`);
 
-                const randomSpeed = minSpeed + (Math.random() * (maxSpeed - minSpeed));
+                const randomSpeed = seededSpeed(mesh.name);
                 rotatingNodesWithSpeeds.push({ node: rotator, speed: randomSpeed });
                 // console.log(`    -> Added "${rotator.name}" to rotation list with speed: ${randomSpeed.toFixed(4)}`);
                 meshesFoundForRotation++;

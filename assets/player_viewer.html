@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>World 888 - Player Controller</title>
+  <style>
+    html, body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background-color: #0b0b14;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #fff;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    
+    #canvasZone {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    
+    #renderCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+    }
+
+    /* Glassmorphic titlebar */
+    .titlebar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: rgba(15, 15, 25, 0.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 1000;
+      -webkit-app-region: drag;
+    }
+    
+    .title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .title-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #10b981;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.8);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .btn:hover {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: rgba(139, 92, 246, 0.4);
+      color: #fff;
+    }
+
+    .btn-close {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+    .btn-close:hover {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    /* Telemetry overlay */
+    .hud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(10, 10, 18, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 14px 20px;
+      border-radius: 10px;
+      z-index: 100;
+      pointer-events: none;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .hud-title {
+      font-weight: 700;
+      color: #8b5cf6;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .instructions {
+      position: absolute;
+      top: 68px;
+      right: 20px;
+      background: rgba(10, 10, 18, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 16px;
+      border-radius: 8px;
+      z-index: 100;
+      pointer-events: none;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .key {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      margin: 0 2px;
+      font-family: monospace;
+      color: #fff;
+    }
+
+    /* Player list overlay */
+    .players-list {
+      position: absolute;
+      top: 68px;
+      left: 20px;
+      background: rgba(10, 10, 18, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 16px;
+      border-radius: 8px;
+      z-index: 100;
+      pointer-events: none;
+      font-size: 11px;
+      min-width: 140px;
+    }
+
+    .players-list-title {
+      font-weight: bold;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .player-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .player-indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+  </style>
+  <!-- Load Babylon.js and Loaders from CDN -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="title">
+      <div class="title-dot"></div>
+      <span>WORLD 888 &mdash; MULTIPLAYER POPUP PLAYER</span>
+    </div>
+    <div class="controls">
+      <button class="btn btn-close" id="btnClose">Close</button>
+    </div>
+  </div>
+
+  <div class="players-list">
+    <div class="players-list-title">Active Players</div>
+    <div id="playersContainer">
+      <div class="player-row">
+        <div class="player-indicator" style="background-color: #8b5cf6;"></div>
+        <span style="font-weight: 600;">You (External)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="instructions">
+    <div style="margin-bottom: 6px;"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> or <span class="key">&larr;</span><span class="key">&uarr;</span><span class="key">&rarr;</span> to Move</div>
+    <div>Drag mouse to Rotate Camera</div>
+  </div>
+
+  <div class="hud">
+    <div class="hud-title">Multiplayer Telemetry</div>
+    <div id="positionDisplay">Position: X: 0.00, Y: 0.00, Z: 0.00</div>
+    <div id="statusDisplay" style="color: rgba(255, 255, 255, 0.5); font-size: 10px; margin-top: 4px;">Sync Channel: obsidian-world-builder-sync</div>
+  </div>
+
+  <div id="canvasZone">
+    <canvas id="renderCanvas"></canvas>
+  </div>
+
+  <script>
+    // Get parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const glbUrl = urlParams.get('glb');
+
+    const canvas = document.getElementById("renderCanvas");
+    const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+    
+    let scene = null;
+    let player = null;
+    let camera = null;
+    
+    // Animation variables matching SceneLoader.js
+    let rotatingNodesWithSpeeds = [];
+    let obeliskMesh = null;
+    let obeliskOriginalY = 0;
+    let hoverTime = 0;
+    const hoverAmplitude = 5;
+    const hoverFrequency = 1.5;
+    const minSpeed = 0.001;
+    const maxSpeed = 0.01;
+    
+    // Multiplayer setups
+    const channel = new BroadcastChannel("obsidian-world-builder-sync");
+    const playerId = "ext-player-" + Math.random().toString(36).substr(2, 9);
+    const remotePlayers = new Map();
+
+    const createScene = function() {
+      const scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color4(0.1, 0.1, 0.1, 1.0);
+      
+      // Standard light
+      const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+      light.intensity = 0.7;
+      
+      // Custom point light
+      const pointLight = new BABYLON.PointLight("pointLight", new BABYLON.Vector3(0, 10, 0), scene);
+      pointLight.intensity = 0.5;
+      pointLight.diffuse = new BABYLON.Color3(0.55, 0.36, 0.98);
+
+      // Collisions and Gravity
+      scene.collisionsEnabled = true;
+      scene.gravity = new BABYLON.Vector3(0, -0.15, 0);
+
+      // Camera setup (Targeting the player)
+      camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 10, BABYLON.Vector3.Zero(), scene);
+      camera.attachControl(canvas, true);
+      camera.lowerRadiusLimit = 4;
+      camera.upperRadiusLimit = 30;
+      camera.checkCollisions = true;
+
+      // Create Player capsule mesh
+      player = BABYLON.MeshBuilder.CreateCapsule("localPlayer", { height: 1.8, radius: 0.6 }, scene);
+      player.position = new BABYLON.Vector3(-4.0, 33.0, -16.0); // Start high to drop matching main app
+      
+      const playerMat = new BABYLON.StandardMaterial("playerMat", scene);
+      playerMat.diffuseColor = new BABYLON.Color3(0.55, 0.36, 0.98); // Vibrant Purple
+      playerMat.emissiveColor = new BABYLON.Color3(0.2, 0.1, 0.4);
+      player.material = playerMat;
+
+      // Ellipsoid for player collision
+      player.checkCollisions = true;
+      player.ellipsoid = new BABYLON.Vector3(0.6, 0.9, 0.6);
+      player.ellipsoidOffset = new BABYLON.Vector3(0, 0.9, 0);
+      player.applyGravity = true;
+
+      // Glow layer
+      const glow = new BABYLON.GlowLayer("glow", scene);
+      glow.intensity = 0.4;
+
+      // Load Map — match SceneLoader.js exactly
+      if (glbUrl) {
+        console.log("Loading GLB Map from:", glbUrl);
+        
+        // Deterministic seeded hash — MUST match SceneLoader.js behaviour
+        // We can't share Math.random() state between windows, so seed by name
+        function seededSpeed(name) {
+          let hash = 0;
+          for (let i = 0; i < name.length; i++) {
+            hash = (Math.imul(31, hash) + name.charCodeAt(i)) | 0;
+          }
+          // Map hash to [minSpeed, maxSpeed]
+          const t = Math.abs(hash % 10000) / 10000;
+          return minSpeed + t * (maxSpeed - minSpeed);
+        }
+        
+        BABYLON.SceneLoader.ImportMeshAsync("", "", glbUrl, scene, null, ".glb")
+          .then(function(result) {
+            console.log("GLB Map loaded. Meshes:", result.meshes.length);
+            
+            let glbRootNode = null;
+            
+            // Pass 1: find root, set transform — identical to SceneLoader.js
+            for (const mesh of result.meshes) {
+              if (!mesh || mesh.isDisposed()) continue;
+              if (mesh.name === "__root__") {
+                glbRootNode = mesh;
+                glbRootNode.rotation = BABYLON.Vector3.Zero();
+                glbRootNode.position = BABYLON.Vector3.Zero();
+                glbRootNode.scaling = new BABYLON.Vector3(44, 44, 44);
+                break;
+              }
+            }
+            
+            // Pass 2: set up each mesh — identical logic to SceneLoader.js
+            for (const mesh of result.meshes) {
+              if (!mesh || mesh.isDisposed()) continue;
+              
+              // Enable collision for walkable ground
+              mesh.checkCollisions = true;
+              if (mesh.material) mesh.material.backFaceCulling = false;
+              
+              if (mesh instanceof BABYLON.Mesh && mesh.name !== "__root__" && glbRootNode) {
+                const rotator = new BABYLON.TransformNode(`rotator_${mesh.name}`, scene);
+                rotator.position = BABYLON.Vector3.Zero();
+                rotator.rotation = BABYLON.Vector3.Zero();
+                rotator.parent = glbRootNode;
+                
+                mesh.setParent(rotator);
+                
+                // Use seeded speed so both windows are in sync
+                const speed = seededSpeed(mesh.name);
+                rotatingNodesWithSpeeds.push({ node: rotator, speed: speed });
+                
+                if (mesh.name === "obelisk") {
+                  obeliskMesh = mesh;
+                  obeliskOriginalY = mesh.position.y;
+                }
+              }
+            }
+          })
+          .catch(function(err) {
+            console.error("GLB Map load failed:", err);
+          });
+      } else {
+        // Fallback ground if no GLB
+        const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 100, height: 100 }, scene);
+        const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
+        groundMat.diffuseColor = new BABYLON.Color3(0.15, 0.15, 0.2);
+        ground.material = groundMat;
+        ground.checkCollisions = true;
+      }
+
+      return scene;
+    };
+
+    scene = createScene();
+
+    // Keyboard movement variables
+    const inputMap = {};
+    window.addEventListener("keydown", (evt) => {
+      inputMap[evt.key.toLowerCase()] = true;
+    });
+    window.addEventListener("keyup", (evt) => {
+      inputMap[evt.key.toLowerCase()] = false;
+    });
+
+    const moveDirection = new BABYLON.Vector3();
+    const speed = 0.12;
+
+    scene.onBeforeRenderObservable.add(() => {
+      if (!player) return;
+
+      // Camera rotation helper
+      camera.target = player.position;
+
+      // Reset direction vector
+      moveDirection.set(0, 0, 0);
+
+      // Get camera view angles
+      const forward = camera.getForwardRay().direction;
+      forward.y = 0; // Lock to horizontal plane
+      forward.normalize();
+      
+      const right = BABYLON.Vector3.Cross(forward, BABYLON.Vector3.Up());
+      right.normalize();
+
+      let moved = false;
+      if (inputMap["w"] || inputMap["arrowup"]) {
+        moveDirection.addInPlace(forward);
+        moved = true;
+      }
+      if (inputMap["s"] || inputMap["arrowdown"]) {
+        moveDirection.subtractInPlace(forward);
+        moved = true;
+      }
+      if (inputMap["a"] || inputMap["arrowleft"]) {
+        moveDirection.subtractInPlace(right);
+        moved = true;
+      }
+      if (inputMap["d"] || inputMap["arrowright"]) {
+        moveDirection.addInPlace(right);
+        moved = true;
+      }
+
+      if (moved) {
+        moveDirection.normalize();
+        moveDirection.scaleInPlace(speed);
+        player.moveWithCollisions(moveDirection);
+        
+        // Rotate player capsule to face movement
+        const angle = Math.atan2(-moveDirection.x, -moveDirection.z);
+        player.rotation.y = angle;
+      }
+
+      // Gravity movement (applied automatically by Babylon ellipsoid if using moveWithCollisions)
+      player.moveWithCollisions(new BABYLON.Vector3(0, -0.15, 0));
+
+      // Telemetry position display
+      document.getElementById("positionDisplay").innerText = 
+        `Position: X: ${player.position.x.toFixed(2)}, Y: ${player.position.y.toFixed(2)}, Z: ${player.position.z.toFixed(2)}`;
+
+      // Update player list HUD
+      updatePlayersHud();
+    });
+
+    // --- Multiplayer Synchronizations ---
+    
+    // 1. Send our position
+    setInterval(() => {
+      if (!player) return;
+      
+      const payload = {
+        type: "UPDATE_STATE",
+        senderId: playerId,
+        timestamp: Date.now(),
+        payload: {
+          position: { x: player.position.x, y: player.position.y, z: player.position.z },
+          rotation: player.rotation.y
+        }
+      };
+      
+      if (channel) channel.postMessage(payload);
+      
+      // Bridge for Electron Cross-Origin: send via HTTP POST to the local web server
+      try {
+        fetch('http://localhost:8885/sync', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        }).catch(e => {});
+      } catch (e) {}
+    }, 100);
+
+    // 2. Receive other players' position
+    const handleIncomingSync = (message) => {
+      if (!message || !message.senderId || message.senderId === playerId) return;
+      
+      const remoteId = message.senderId;
+
+      if (message.type === "UPDATE_STATE") {
+        const payload = message.payload;
+        if (!payload || !payload.position) return;
+
+        let remoteData = remotePlayers.get(remoteId);
+        
+        if (!remoteData) {
+          // Spawn new remote player model
+          const remoteMesh = BABYLON.MeshBuilder.CreateCapsule("remote_" + remoteId, { height: 1.8, radius: 0.6 }, scene);
+          
+          const mat = new BABYLON.StandardMaterial("remoteMat_" + remoteId, scene);
+          // Distinguish local vs remote: remote players are blueish
+          mat.diffuseColor = new BABYLON.Color3(0.1, 0.5, 0.95);
+          mat.emissiveColor = new BABYLON.Color3(0.05, 0.15, 0.4);
+          remoteMesh.material = mat;
+
+          remoteData = {
+            mesh: remoteMesh,
+            lastUpdate: Date.now(),
+            targetPosition: new BABYLON.Vector3(payload.position.x, payload.position.y, payload.position.z),
+            targetRotation: payload.rotation || 0
+          };
+          remotePlayers.set(remoteId, remoteData);
+          updatePlayersHud();
+        } else {
+          remoteData.targetPosition.copyFromFloats(payload.position.x, payload.position.y, payload.position.z);
+          remoteData.targetRotation = payload.rotation || 0;
+          remoteData.lastUpdate = Date.now();
+        }
+      } 
+      else if (message.type === "PLAYER_LEFT") {
+        const remoteData = remotePlayers.get(remoteId);
+        if (remoteData) {
+          if (remoteData.mesh) remoteData.mesh.dispose();
+          remotePlayers.delete(remoteId);
+          updatePlayersHud();
+        }
+      }
+    };
+    
+    // Listen to standard BroadcastChannel
+    if (channel) {
+      channel.onmessage = (event) => handleIncomingSync(event.data);
+    }
+    // Listen for direct bridge calls from Electron host
+    window.handleExternalSync = handleIncomingSync;
+
+    // Interpolate remote player movements
+    scene.onBeforeRenderObservable.add(() => {
+      const now = Date.now();
+      remotePlayers.forEach((data, id) => {
+        // Prune after 8s of no activity
+        if (now - data.lastUpdate > 8000) {
+          if (data.mesh) data.mesh.dispose();
+          remotePlayers.delete(id);
+          return;
+        }
+
+        if (data.mesh) {
+          data.mesh.position = BABYLON.Vector3.Lerp(data.mesh.position, data.targetPosition, 0.15);
+          data.mesh.rotation.y = BABYLON.Scalar.LerpAngle(data.mesh.rotation.y, data.targetRotation, 0.15);
+        }
+      });
+    });
+
+    function updatePlayersHud() {
+      const container = document.getElementById("playersContainer");
+      container.innerHTML = `
+        <div class="player-row">
+          <div class="player-indicator" style="background-color: #8b5cf6;"></div>
+          <span style="font-weight: 600;">You (External)</span>
+        </div>
+      `;
+      
+      remotePlayers.forEach((data, id) => {
+        const label = id.startsWith("ext-player") ? `Player (Ext - ${id.slice(-4)})` : `Player (${id.slice(-6)})`;
+        const color = id.startsWith("ext-player") ? "#3b82f6" : "#10b981";
+        container.innerHTML += `
+          <div class="player-row">
+            <div class="player-indicator" style="background-color: ${color};"></div>
+            <span>${label}</span>
+          </div>
+        `;
+      });
+    }
+
+    // Clean leave on window unload
+    window.addEventListener("beforeunload", () => {
+      if (channel) {
+        channel.postMessage({ type: "PLAYER_LEFT", senderId: playerId });
+        channel.close();
+      }
+    });
+
+    // Close button
+    document.getElementById("btnClose").addEventListener("click", () => {
+      window.close();
+    });
+
+    engine.runRenderLoop(function () {
+      if (scene) {
+        // --- Orbital Rotation Effect ---
+        if (rotatingNodesWithSpeeds.length > 0) {
+          rotatingNodesWithSpeeds.forEach((item) => {
+            item.node.rotate(BABYLON.Axis.Y, item.speed, BABYLON.Space.LOCAL);
+          });
+        }
+
+        // --- Hovering effect for the 'obelisk' mesh ---
+        if (obeliskMesh) {
+          const deltaTime = engine.getDeltaTime() / 1000;
+          hoverTime += deltaTime * hoverFrequency;
+          const yOffset = hoverAmplitude * Math.sin(hoverTime);
+          obeliskMesh.position.y = obeliskOriginalY + yOffset;
+        }
+
+        scene.render();
+      }
+    });
+
+    window.addEventListener("resize", function () {
+      engine.resize();
+    });
+  </script>
+</body>
+</html>

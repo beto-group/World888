@@ -1,6 +1,18 @@
 /** @jsx h */
 const { h, render } = dc.preact;
-const { useState, useEffect, useRef } = dc;
+const { useState, useEffect, useRef, useCallback } = dc;
+
+// Import Node.js modules for external window creation (optional - graceful fallback)
+let BrowserWindow = null;
+let os = null;
+try {
+  const electron = require('@electron/remote') || require('electron').remote || {};
+  BrowserWindow = electron.BrowserWindow;
+  os = require('os');
+} catch (e) {
+  // Electron modules not available
+}
+
 
 /*==============================================================================
   GLOBAL Z-INDEX MANAGEMENT
@@ -431,6 +443,213 @@ function FreshPip({ onClose, filePath, functionName, customStyle = {} }) {
   );
 }
 
+// --- ENHANCED: External Window Creator for WORLD 888 ---
+async function createExternalWindow() {
+  if (!BrowserWindow) {
+    console.error("[createExternalWindow] BrowserWindow not available.");
+    if (typeof Notice !== 'undefined') new Notice("External window mode requires Electron with remote module enabled.", 5000);
+    return null;
+  }
+
+  try {
+    const isMac = os && os.platform() === 'darwin';
+    
+    const externalWindow = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      minWidth: 700,
+      minHeight: 500,
+      title: '✨ WORLD 888 - External View',
+      backgroundColor: '#0D0D1A',
+      frame: isMac ? false : true,
+      titleBarStyle: isMac ? 'hiddenInset' : 'default',
+      vibrancy: isMac ? 'ultra-dark' : undefined,
+      hasShadow: true,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        enableRemoteModule: true
+      },
+      show: false
+    });
+    
+    // Resolve absolute path to assets/player_viewer.html
+    const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+    const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
+    const absFolderPath = dc.app.vault.adapter.getFullPath 
+      ? dc.app.vault.adapter.getFullPath(folderPath) 
+      : dc.app.vault.adapter.basePath + '/' + folderPath;
+      
+    const fs = require('fs');
+    const path = require('path');
+    
+    const htmlPath = path.join(absFolderPath, "assets", "player_viewer.html");
+    const glbPath = path.join(absFolderPath, "assets", "glb", "scene888.glb");
+    
+    let htmlContent = fs.readFileSync(htmlPath, 'utf8');
+    
+    // Inject the local GLB file fallback directly into the HTML to prevent location.search parsing issues in data URLs
+    const fileGlbUrl = "file://" + glbPath;
+    htmlContent = htmlContent.replace(
+      "const glbUrl = urlParams.get('glb');",
+      `const glbUrl = urlParams.get('glb') || "${fileGlbUrl}";`
+    );
+
+    externalWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+    externalWindow._requestedMode = null;
+    
+    try {
+      const electron = require('electron');
+      const ipcMain = electron.ipcMain || (electron.remote && electron.remote.ipcMain);
+      
+      if (ipcMain && typeof ipcMain.on === 'function') {
+        const switchModeHandler = (event, mode) => {
+          if (event.sender === externalWindow.webContents) {
+            externalWindow._requestedMode = mode;
+          }
+        };
+        ipcMain.on('switch-mode', switchModeHandler);
+        externalWindow._ipcHandler = switchModeHandler;
+        externalWindow._ipcMain = ipcMain;
+      }
+    } catch (e) {}
+    
+    externalWindow.once('ready-to-show', () => {
+      externalWindow.show();
+      if (typeof Notice !== 'undefined') new Notice("✨ External window opened!", 3000);
+    });
+    
+    externalWindow.on('closed', () => {
+      if (externalWindow._ipcHandler && externalWindow._ipcMain) {
+        try {
+          externalWindow._ipcMain.removeListener('switch-mode', externalWindow._ipcHandler);
+        } catch (e) {}
+      }
+    });
+    return externalWindow;
+  } catch (error) {
+    console.error("[createExternalWindow] Failed:", error);
+    if (typeof Notice !== 'undefined') new Notice('Failed to open external window: ' + error.message, 5000);
+    return null;
+  }
+}
+
+const WEB_SERVER_PORT = 8885;
+
+// Persist server on Node.js global so it survives Datacore hot-reloads.
+// If global.__w888_server already exists it's the live server from a previous load.
+if (typeof global.__w888_server === 'undefined') {
+  global.__w888_server = null;
+}
+
+function _buildServer(folderPath) {
+  const http = require('http');
+  const fs   = require('fs');
+  const path = require('path');
+
+  const server = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+
+    if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+
+    const decodedUrl = decodeURIComponent(req.url.split('?')[0]);
+
+    // --- IPC Bridge: Popup -> Host via global callback ---
+    if (req.method === 'POST' && decodedUrl === '/sync') {
+      let body = '';
+      req.on('data', chunk => body += chunk.toString());
+      req.on('end', () => {
+        try {
+          const payload = JSON.parse(body);
+          // Route via the global sync handler set by ScreenModeHelper when spawning window
+          if (typeof global.__w888_syncHandler === 'function') {
+            global.__w888_syncHandler(payload);
+          } else {
+            // Fallback: broadcast directly (works if same origin)
+            const bc = new BroadcastChannel("obsidian-world-builder-sync");
+            bc.postMessage(payload);
+            bc.close();
+          }
+        } catch(e) {}
+        res.writeHead(200);
+        res.end('ok');
+      });
+      return;
+    }
+
+    const filePath = path.join(folderPath, "assets", decodedUrl);
+    const relative = path.relative(path.join(folderPath, "assets"), filePath);
+    const isInsideAssets = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+
+    if (!isInsideAssets) { res.writeHead(403); res.end("Forbidden"); return; }
+
+    fs.stat(filePath, (err, stats) => {
+      if (err || !stats.isFile()) { res.writeHead(404); res.end("File Not Found"); return; }
+
+      const headers = { 'Content-Type': 'text/html' };
+      if (filePath.endsWith('.glb'))  headers['Content-Type'] = 'model/gltf-binary';
+      else if (filePath.endsWith('.js'))   headers['Content-Type'] = 'application/javascript';
+      else if (filePath.endsWith('.css'))  headers['Content-Type'] = 'text/css';
+      else if (filePath.endsWith('.json')) headers['Content-Type'] = 'application/json';
+
+      if (filePath.endsWith('.html')) {
+        headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+        headers['Pragma'] = 'no-cache';
+        headers['Expires'] = '0';
+      }
+
+      res.writeHead(200, headers);
+      fs.createReadStream(filePath).pipe(res);
+    });
+  });
+
+  return server;
+}
+
+function startLocalWebServer(folderPath) {
+  // If we already have a healthy server running, reuse it
+  if (global.__w888_server && global.__w888_server.listening) {
+    console.log('[ScreenModeHelper] Reusing existing web server on port', WEB_SERVER_PORT);
+    return;
+  }
+
+  // Close any stale reference
+  if (global.__w888_server && !global.__w888_server.listening) {
+    try { global.__w888_server.close(); } catch(e) {}
+    global.__w888_server = null;
+  }
+
+  try {
+    const server = _buildServer(folderPath);
+    global.__w888_server = server;
+
+    server.listen(WEB_SERVER_PORT, () => {
+      console.log(`[ScreenModeHelper] Local web server started on port ${WEB_SERVER_PORT}`);
+    });
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        // Port taken by a previous un-closeable process — try to kill & retry once
+        console.warn(`[ScreenModeHelper] Port ${WEB_SERVER_PORT} busy. Attempting forced restart...`);
+        const http = require('http');
+        // Send shutdown signal to old server (it won't have /shutdown, but the request forces a socket close)
+        const req = http.request({ host: 'localhost', port: WEB_SERVER_PORT, path: '/__kill', method: 'GET' });
+        req.on('error', () => {});
+        req.end();
+        // Mark as not-listening so next call rebuilds
+        global.__w888_server = null;
+      } else {
+        console.error("[ScreenModeHelper] Local web server error:", err);
+        global.__w888_server = null;
+      }
+    });
+  } catch (e) {
+    console.error("[ScreenModeHelper] Failed to start local web server:", e);
+  }
+}
+
 /*==============================================================================
   SCENEHELPER / SCREENMODEHELPER COMPONENT
 ==============================================================================*/
@@ -441,7 +660,7 @@ const ScreenModeHelper = ({
   defaultStyle,
   originalParentRefForWindow,
   originalParentRefForPiP,
-  allowedScreenModes = ["browser", "window", "character"],
+  allowedScreenModes = ["browser", "window", "character", "web"],
   engine,
   onModeChange // optional callback to inform parent (WorldView) about mode changes
 }) => {
@@ -455,9 +674,43 @@ const ScreenModeHelper = ({
     activeModeRef.current = activeMode;
   }, [activeMode]);
 
-  const toggleMode = (mode) => {
+  const externalWindowRef = useRef(null);
+
+  const openExternalWindow = useCallback(async () => {
+    if (externalWindowRef.current && !externalWindowRef.current.isDestroyed()) {
+      externalWindowRef.current.focus();
+      return true;
+    }
+
+    const win = await createExternalWindow();
+    if (win) {
+      externalWindowRef.current = win;
+      if (containerRef.current) {
+        containerRef.current.style.visibility = 'hidden';
+      }
+      return true;
+    }
+    return false;
+  }, [containerRef]);
+
+  const closeExternalWindow = useCallback(() => {
+    if (externalWindowRef.current && !externalWindowRef.current.isDestroyed()) {
+      externalWindowRef.current.close();
+      externalWindowRef.current = null;
+    }
+    if (containerRef.current) {
+      containerRef.current.style.visibility = 'visible';
+    }
+  }, [containerRef]);
+
+  const toggleMode = async (mode) => {
     // console.log("[ScreenModeHelper] Toggling mode. Current mode:", activeMode, "Requested mode:", mode);
     let newMode = activeMode;
+    
+    // Close external window if we are switching away from window mode
+    if (activeMode === "window" && mode !== "window") {
+      closeExternalWindow();
+    }
     
     if (mode === "pip") {
       if (activeMode === "pip") {
@@ -470,16 +723,87 @@ const ScreenModeHelper = ({
         applyScreenMode("pip", containerRef.current, originalParentRefForWindow, originalParentRefForPiP, defaultStyle);
       }
     } else if (mode === "character") {
-      // Spawn a new WorldView instance in a floating PiP window
-      const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
-const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
-      const pipOptions = {
-        width: "555px",
-        height: "388px",
-        top: "calc(100% - 388px - 20px)",
-        left: "calc(100% - 555px - 20px)"
-      };
-      spawnCustomPiP(folderPath + "/src/App.jsx", "Character Screen", "WorldView", pipOptions);
+      // Spawn a new player instance in a real, external OS window using Electron BrowserWindow
+      try {
+        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+        const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
+        
+        // Use local web server to avoid ERR_BLOCKED_BY_CLIENT file:// restrictions
+        const absFolder = dc.app.vault.adapter.getFullPath 
+          ? dc.app.vault.adapter.getFullPath(folderPath) 
+          : dc.app.vault.adapter.basePath + '/' + folderPath;
+        startLocalWebServer(absFolder);
+        
+        const targetUrl = `http://localhost:8885/player_viewer.html?t=${Date.now()}&glb=http://localhost:8885/glb/scene888.glb`;
+        
+        const remote = require('@electron/remote') || require('electron').remote;
+        if (!remote || !remote.BrowserWindow) {
+          throw new Error("Electron remote is not available.");
+        }
+        
+        const playerWindow = new remote.BrowserWindow({
+          title: "World 888 - Player Viewer",
+          width: 800,
+          height: 600,
+          frame: true,
+          transparent: false,
+          backgroundColor: "#0b0b14",
+          webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+            enableRemoteModule: true,
+            webSecurity: false
+          }
+        });
+        
+        // --- Establish Cross-Origin Multiplayer Bridge ---
+        // 1. Popup -> Host: register a global function that the /sync HTTP handler calls
+        global.__w888_syncHandler = (payload) => {
+          try {
+            const bc = new BroadcastChannel("obsidian-world-builder-sync");
+            bc.postMessage(payload);
+            bc.close();
+          } catch (e) {}
+        };
+
+        // 2. Host -> Popup: listen on BroadcastChannel and inject into the popup via executeJavaScript
+        const hostBc = new BroadcastChannel("obsidian-world-builder-sync");
+        hostBc.onmessage = (event) => {
+          if (playerWindow && !playerWindow.isDestroyed()) {
+            playerWindow.webContents.executeJavaScript(`
+              if (window.handleExternalSync) {
+                window.handleExternalSync(${JSON.stringify(event.data)});
+              }
+            `).catch(() => {});
+          } else {
+            hostBc.close();
+          }
+        };
+
+        playerWindow.on('closed', () => {
+          hostBc.close();
+          global.__w888_syncHandler = null;
+        });
+        
+        playerWindow.loadURL(targetUrl);
+        playerWindow.once('ready-to-show', () => {
+          playerWindow.show();
+          if (typeof Notice !== 'undefined') new Notice("✨ Secondary player window opened!", 3000);
+        });
+        
+      } catch (e) {
+        console.error("[ScreenModeHelper] Failed to spawn external player window:", e);
+        // Fallback to DOM-based spawnCustomPiP if Electron is not available
+        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+        const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
+        const pipOptions = {
+          width: "555px",
+          height: "388px",
+          top: "calc(100% - 388px - 20px)",
+          left: "calc(100% - 555px - 20px)"
+        };
+        spawnCustomPiP(folderPath + "/src/App.jsx", "Character Screen", "WorldView", pipOptions);
+      }
       return; // Don't change activeMode, just spawn and return
     } else if (mode === "browser") {
       if (activeMode === "browser") {
@@ -502,20 +826,41 @@ const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
       if (activeMode === "window") {
         newMode = "default";
         activeModeRef.current = "default"; // Update ref immediately
-        // console.log("[ScreenModeHelper] Exiting window mode, resetting to default");
-        resetScreenMode(containerRef.current, defaultStyle, originalParentRefForWindow, originalParentRefForPiP);
+        closeExternalWindow();
       } else {
         newMode = "window";
         activeModeRef.current = "window"; // Update ref immediately
-        // console.log("[ScreenModeHelper] Entering window mode");
-        applyScreenMode("window", containerRef.current, originalParentRefForWindow, originalParentRefForPiP, defaultStyle);
+        const success = await openExternalWindow();
+        if (!success) {
+          newMode = "default";
+          activeModeRef.current = "default";
+        }
       }
+    } else if (mode === "web") {
+      try {
+        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+        const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
+        const absFolder = dc.app.vault.adapter.getFullPath 
+          ? dc.app.vault.adapter.getFullPath(folderPath) 
+          : dc.app.vault.adapter.basePath + '/' + folderPath;
+        
+        startLocalWebServer(absFolder);
+        
+        const targetUrl = `http://localhost:8885/player_viewer.html?glb=http://localhost:8885/glb/scene888.glb`;
+        
+        const { shell } = require('electron');
+        shell.openExternal(targetUrl);
+        
+        if (typeof Notice !== 'undefined') new Notice("🌐 Opened player in web browser!", 3000);
+      } catch (e) {
+        console.error("[ScreenModeHelper] Failed to open in web browser:", e);
+      }
+      return; // Don't change activeMode state, just open in browser and return
     }
     setActiveMode(newMode);
     // Note: activeModeRef is updated immediately above for all modes now
     // Inform parent that the mode changed (WorldView will restore full-tab when newMode === 'default')
     try { if (typeof onModeChange === 'function') onModeChange(newMode); } catch (e) { console.warn('[ScreenModeHelper] onModeChange callback threw:', e); }
-    // console.log("[ScreenModeHelper] Mode toggled. New mode:", newMode);
   };
 
   useEffect(() => {
@@ -599,6 +944,57 @@ const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
     };
   }, [onModeChange]); // Only depend on onModeChange, use refs for everything else
 
+  // Monitor external window state and handle switch-mode callbacks
+  useEffect(() => {
+    if (activeMode !== 'window' || !externalWindowRef.current) return;
+    
+    const checkExternalWindow = () => {
+      const extWindow = externalWindowRef.current;
+      if (extWindow && extWindow.isDestroyed()) {
+        let requestedMode = extWindow._requestedMode || extWindow._externalWindowRequestedMode;
+        
+        if (!requestedMode) {
+          try {
+            const stored = localStorage.getItem('_externalWindowRequestedMode');
+            if (stored) {
+              const data = JSON.parse(stored);
+              if (Date.now() - data.timestamp < 5000) {
+                requestedMode = data.mode;
+              }
+              localStorage.removeItem('_externalWindowRequestedMode');
+            }
+          } catch (e) {}
+        }
+        
+        if (containerRef.current) containerRef.current.style.visibility = 'visible';
+        externalWindowRef.current = null;
+        
+        if (requestedMode === 'fullTab') {
+          requestedMode = 'default';
+        }
+        
+        if (requestedMode && requestedMode !== 'window') {
+          setTimeout(() => toggleMode(requestedMode), 100);
+        } else {
+          setActiveMode("default");
+          try { if (typeof onModeChange === 'function') onModeChange("default"); } catch (e) {}
+        }
+      }
+    };
+
+    const interval = setInterval(checkExternalWindow, 500);
+    return () => clearInterval(interval);
+  }, [activeMode, containerRef, toggleMode, onModeChange]);
+
+  // Clean up external window on unmount
+  useEffect(() => {
+    return () => {
+      if (externalWindowRef.current && !externalWindowRef.current.isDestroyed()) {
+        externalWindowRef.current.close();
+      }
+    };
+  }, []);
+
   const iconStyle = { width: "24px", height: "24px" };
   
   const modeIcons = {
@@ -606,7 +1002,8 @@ const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
     window: "square",
     pip: "picture-in-picture-2",
     default: "circle",
-    character: "user"
+    character: "user",
+    web: "globe"
   };
 
   const buttonStyle = (isActive) => ({
@@ -722,6 +1119,8 @@ const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         let tooltipText = mode.charAt(0).toUpperCase() + mode.slice(1) + " Mode";
         if (mode === "browser") {
           tooltipText = activeMode === "browser" ? "Exit Fullscreen (ESC)" : "Enter Fullscreen";
+        } else if (mode === "web") {
+          tooltipText = "Open in Default Web Browser";
         }
         
         return (

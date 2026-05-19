@@ -474,7 +474,16 @@ const CharacterLogic = (() => {
                 //console.log("[CharacterLogic] Cleanup...");
                 if (movementComponents && typeof movementComponents.cleanup === 'function') { try { movementComponents.cleanup(); } catch(e) { console.warn("[CharacterLogic] Error in movement cleanup:", e); } }
                 if (cameraLogic && typeof cameraLogic.cleanup === 'function') { try { cameraLogic.cleanup(); } catch(e) { console.warn("[CharacterLogic] Error in camera cleanup:", e); } }
-                if (env.characterController && typeof env.characterController.dispose === 'function') { try { env.characterController.dispose(); } catch(e) { console.warn("[CharacterLogic] Error disposing controller:", e); } }
+                if (env.characterController && typeof env.characterController.dispose === 'function') {
+                    try {
+                        const ccScene = (typeof env.characterController.getScene === 'function') ? env.characterController.getScene() : null;
+                        if (!ccScene || (typeof ccScene.getPhysicsEngine === 'function' && ccScene.getPhysicsEngine())) {
+                            env.characterController.dispose();
+                        }
+                    } catch(e) {
+                        console.warn("[CharacterLogic] Error disposing controller:", e);
+                    }
+                }
                 if (env.displayCapsule && typeof env.displayCapsule.dispose === 'function') { try { env.displayCapsule.dispose(); } catch(e) { console.warn("[CharacterLogic] Error disposing capsule:", e); } }
                 if (env.light && typeof env.light.dispose === 'function') { try { env.light.dispose(); } catch(e) { console.warn("[CharacterLogic] Error disposing light:", e); } }
                 //console.log("[CharacterLogic] Cleanup finished.");

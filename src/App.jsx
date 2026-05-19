@@ -284,7 +284,7 @@ function WorldView() {
               defaultStyle="position: relative; width: 100%; height: 400px;"
               originalParentRefForWindow={originalParentRefForWindow}
               originalParentRefForPiP={originalParentRefForPiP}
-              allowedScreenModes={["browser", "window", "character"]}
+              allowedScreenModes={["browser", "window", "character", "web"]}
               engine={worldResources.engine}
               onModeChange={(mode) => {
                 // When ScreenModeHelper switches modes, inform WorldView so it can
