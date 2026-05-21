@@ -125,9 +125,12 @@ const CameraLogic = (() => {
         if (distToLookAt < minRaycastDist) {
           targetPosition = lookAtPoint.add(ray.direction.scale(minRaycastDist));
         }
-        camera.position = window.BABYLON.Vector3.Lerp(camera.position, targetPosition, 0.3);
+        // Remove frame-rate dependent Lerp to prevent high-speed rubber-banding
+        camera.position.copyFrom(targetPosition);
       }
     });
+    // NOTE: The renderObserver is added without insertFirst, so it naturally runs after CharacterLogic 
+    // IF CharacterLogic uses insertFirst=true, OR we just let CharacterLogic insertFirst.
 
     return {
       getCurrentMode: () => currentCameraMode,

@@ -13,6 +13,29 @@ try {
   // Electron modules not available
 }
 
+const requestSecure = async (url, options = {}) => {
+  try {
+    if (typeof window !== 'undefined' && typeof window.require === 'function') {
+      const obsidian = window.require('obsidian');
+      if (obsidian && typeof obsidian.requestUrl === 'function') {
+        const res = await obsidian.requestUrl({
+          url: url,
+          method: options.method || 'GET',
+          headers: options.headers || {},
+          body: typeof options.body === 'object' ? JSON.stringify(options.body) : options.body
+        });
+        return {
+          ok: res.status >= 200 && res.status < 300,
+          status: res.status,
+          json: async () => res.json,
+          text: async () => res.text
+        };
+      }
+    }
+  } catch (_) {}
+  return fetch(url, options);
+};
+
 
 /*==============================================================================
   GLOBAL Z-INDEX MANAGEMENT
@@ -474,7 +497,7 @@ async function createExternalWindow() {
     });
     
     // Resolve absolute path to assets/player_viewer.html
-    const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+    const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/22 World888/WORLD 888.md";
     const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
     const absFolderPath = dc.app.vault.adapter.getFullPath 
       ? dc.app.vault.adapter.getFullPath(folderPath) 
@@ -535,120 +558,283 @@ async function createExternalWindow() {
 }
 
 const WEB_SERVER_PORT = 8885;
+const W888_SERVER_VERSION = 'v3-sse';
 
-// Persist server on Node.js global so it survives Datacore hot-reloads.
-// If global.__w888_server already exists it's the live server from a previous load.
-if (typeof global.__w888_server === 'undefined') {
-  global.__w888_server = null;
-}
+// Persist on Node.js global so it survives Datacore hot-reloads
+if (typeof globalThis.__w888_server === 'undefined') globalThis.__w888_server = null;
+if (typeof globalThis.__w888_server_pid === 'undefined') globalThis.__w888_server_pid = null;
 
-function _buildServer(folderPath) {
-  const http = require('http');
-  const fs   = require('fs');
-  const path = require('path');
-
-  const server = http.createServer((req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-
-    if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
-
-    const decodedUrl = decodeURIComponent(req.url.split('?')[0]);
-
-    // --- IPC Bridge: Popup -> Host via global callback ---
-    if (req.method === 'POST' && decodedUrl === '/sync') {
-      let body = '';
-      req.on('data', chunk => body += chunk.toString());
-      req.on('end', () => {
-        try {
-          const payload = JSON.parse(body);
-          // Route via the global sync handler set by ScreenModeHelper when spawning window
-          if (typeof global.__w888_syncHandler === 'function') {
-            global.__w888_syncHandler(payload);
-          } else {
-            // Fallback: broadcast directly (works if same origin)
-            const bc = new BroadcastChannel("obsidian-world-builder-sync");
-            bc.postMessage(payload);
-            bc.close();
-          }
-        } catch(e) {}
-        res.writeHead(200);
-        res.end('ok');
-      });
-      return;
-    }
-
-    const filePath = path.join(folderPath, "assets", decodedUrl);
-    const relative = path.relative(path.join(folderPath, "assets"), filePath);
-    const isInsideAssets = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
-
-    if (!isInsideAssets) { res.writeHead(403); res.end("Forbidden"); return; }
-
-    fs.stat(filePath, (err, stats) => {
-      if (err || !stats.isFile()) { res.writeHead(404); res.end("File Not Found"); return; }
-
-      const headers = { 'Content-Type': 'text/html' };
-      if (filePath.endsWith('.glb'))  headers['Content-Type'] = 'model/gltf-binary';
-      else if (filePath.endsWith('.js'))   headers['Content-Type'] = 'application/javascript';
-      else if (filePath.endsWith('.css'))  headers['Content-Type'] = 'text/css';
-      else if (filePath.endsWith('.json')) headers['Content-Type'] = 'application/json';
-
-      if (filePath.endsWith('.html')) {
-        headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-        headers['Pragma'] = 'no-cache';
-        headers['Expires'] = '0';
+function startWorldServer(assetsFolder) {
+  console.log('[World888] startWorldServer called with assetsFolder:', assetsFolder);
+  
+  // Kill old server if version stamp is missing or stale (e.g. pre-SSE server)
+  if (globalThis.__w888_server && globalThis.__w888_server.__w888version !== W888_SERVER_VERSION) {
+    console.log('[World888] Stale server, restarting as', W888_SERVER_VERSION);
+    try {
+      if (globalThis.__w888_server.pruneInterval) clearInterval(globalThis.__w888_server.pruneInterval);
+      if (globalThis.__w888_server.subscribers) {
+        for (const [id, res] of globalThis.__w888_server.subscribers) {
+          try { res.end(); } catch(_) {}
+        }
+        globalThis.__w888_server.subscribers.clear();
       }
+      if (globalThis.__w888_server.activeSockets) {
+        for (const socket of globalThis.__w888_server.activeSockets) {
+          try { socket.destroy(); } catch(_) {}
+        }
+        globalThis.__w888_server.activeSockets.clear();
+      }
+      globalThis.__w888_server.close();
+    } catch(_) {}
+    globalThis.__w888_server = null;
+  }
 
-      res.writeHead(200, headers);
-      fs.createReadStream(filePath).pipe(res);
-    });
-  });
-
-  return server;
-}
-
-function startLocalWebServer(folderPath) {
-  // If we already have a healthy server running, reuse it
-  if (global.__w888_server && global.__w888_server.listening) {
-    console.log('[ScreenModeHelper] Reusing existing web server on port', WEB_SERVER_PORT);
+  if (globalThis.__w888_server && globalThis.__w888_server.listening) {
+    console.log('[World888] Server already running:', W888_SERVER_VERSION);
     return;
   }
 
-  // Close any stale reference
-  if (global.__w888_server && !global.__w888_server.listening) {
-    try { global.__w888_server.close(); } catch(e) {}
-    global.__w888_server = null;
-  }
-
   try {
-    const server = _buildServer(folderPath);
-    global.__w888_server = server;
+    const http = require('http');
+    const fs   = require('fs');
+    const path = require('path');
+    const os   = require('os');
 
-    server.listen(WEB_SERVER_PORT, () => {
-      console.log(`[ScreenModeHelper] Local web server started on port ${WEB_SERVER_PORT}`);
+    // 1. Spawning standalone server if it exists (detaching child process)
+    const serverScriptPath = path.join(assetsFolder, '..', 'server', 'world888-server.js');
+    if (fs.existsSync(serverScriptPath)) {
+      console.log('[World888] Standalone server script found, spawning child process.');
+      const { spawn } = require('child_process');
+      
+      const userShell = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/sh');
+      const isMacOrLinux = os.platform() === 'darwin' || os.platform() === 'linux';
+      
+      // Use login shell on macOS/Linux to load environment/PATH so "node" can be resolved.
+      // We use "exec" so that the shell process replaces itself with node, keeping the same PID.
+      const cmd = `exec node "${serverScriptPath}" "${assetsFolder}"`;
+      const shellArgs = isMacOrLinux && (userShell.includes('zsh') || userShell.includes('bash'))
+        ? ['-l', '-c', cmd]
+        : ['-c', cmd];
+
+      try {
+        console.log('[World888] Spawning server via shell:', userShell, shellArgs);
+        const child = spawn(userShell, shellArgs, {
+          detached: true,
+          stdio: 'ignore'
+        });
+        
+        child.on('error', (err) => {
+          console.error('[World888] Shell spawn process error:', err);
+        });
+
+        child.unref();
+        globalThis.__w888_server_pid = child.pid;
+        console.log('[World888] Standalone server spawned with PID:', child.pid);
+        
+        // Mock server handle for Datacore state tracking
+        globalThis.__w888_server = {
+          listening: true,
+          __w888version: W888_SERVER_VERSION,
+          _external: false,
+          close: (cb) => { if (cb) cb(); }
+        };
+        return;
+      } catch (spawnErr) {
+        console.error('[World888] Failed to spawn standalone server:', spawnErr);
+        // Fall back to inline server
+      }
+    }
+
+    const players     = new Map();
+    const subscribers = new Map();
+    const activeSockets = new Set();
+
+    function broadcast(excludeId, data) {
+      const msg = `data: ${JSON.stringify(data)}\n\n`;
+      for (const [id, res] of subscribers) {
+        if (id === excludeId) continue;
+        try { res.write(msg); } catch(_) { subscribers.delete(id); }
+      }
+    }
+
+    function readBody(req) {
+      return new Promise(resolve => {
+        let raw = '';
+        req.on('data', c => raw += c.toString());
+        req.on('end', () => { try { resolve(JSON.parse(raw)); } catch(_) { resolve({}); } });
+        req.on('error', () => resolve({}));
+      });
+    }
+
+    const MIME = {
+      '.html':'text/html; charset=utf-8', '.js':'application/javascript',
+      '.css':'text/css', '.json':'application/json',
+      '.glb':'model/gltf-binary', '.png':'image/png',
+      '.jpg':'image/jpeg', '.svg':'image/svg+xml', '.wasm':'application/wasm',
+    };
+
+    const server = http.createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, X-Passcode, x-passcode');
+      if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+      const u  = new URL(req.url, `http://localhost:${WEB_SERVER_PORT}`);
+      const pn = u.pathname;
+
+      if (req.method === 'POST' && pn === '/sync') {
+        readBody(req).then(b => {
+          const { id, name, position, rotation } = b;
+          if (!id) { res.writeHead(400); res.end('missing id'); return; }
+          players.set(id, { name: name || id, position, rotation, lastSeen: Date.now() });
+          broadcast(id, { type: 'UPDATE_STATE', senderId: id, payload: { name, position, rotation } });
+          res.writeHead(200, {'Content-Type':'application/json'});
+          res.end(JSON.stringify({ ok: true }));
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && pn === '/leave') {
+        readBody(req).then(b => {
+          if (b.id) { players.delete(b.id); subscribers.delete(b.id); broadcast(b.id, { type:'PLAYER_LEFT', senderId: b.id }); }
+          res.writeHead(200); res.end('ok');
+        });
+        return;
+      }
+
+      if (req.method === 'GET' && pn === '/players') {
+        const list = [];
+        for (const [id, p] of players) list.push({ id, ...p });
+        res.writeHead(200, {'Content-Type':'application/json'});
+        res.end(JSON.stringify(list));
+        return;
+      }
+
+      if (req.method === 'GET' && pn === '/status') {
+        let lanIP = 'localhost';
+        try {
+          for (const ifaces of Object.values(os.networkInterfaces()))
+            for (const i of ifaces) if (i.family === 'IPv4' && !i.internal) { lanIP = i.address; break; }
+        } catch(_) {}
+        res.writeHead(200, {'Content-Type':'application/json'});
+        res.end(JSON.stringify({ ok:true, port: WEB_SERVER_PORT, players: players.size, lanURL:`http://${lanIP}:${WEB_SERVER_PORT}`, localURL:`http://localhost:${WEB_SERVER_PORT}` }));
+        return;
+      }
+
+      if (req.method === 'POST' && pn === '/kill') {
+        res.writeHead(200); res.end('shutting down');
+        console.log('[World888] Received /kill signal, shutting down zombie server.');
+        if (pruneInterval) clearInterval(pruneInterval);
+        for (const [id, subRes] of subscribers) {
+          try { subRes.end(); } catch(_) {}
+        }
+        subscribers.clear();
+        for (const socket of activeSockets) {
+          try { socket.destroy(); } catch(_) {}
+        }
+        activeSockets.clear();
+        server.close();
+        if (globalThis.__w888_server === server) globalThis.__w888_server = null;
+        return;
+      }
+
+      if (req.method === 'GET' && pn === '/events') {
+        const pid = u.searchParams.get('id');
+        if (!pid) { res.writeHead(400); res.end('missing id'); return; }
+
+        res.writeHead(200, {
+          'Content-Type':'text/event-stream', 'Cache-Control':'no-cache',
+          'Connection':'keep-alive', 'X-Accel-Buffering':'no'
+        });
+        res.write(': connected\n\n');
+
+        for (const [id, p] of players) {
+          if (id === pid) continue;
+          res.write(`data: ${JSON.stringify({ type:'UPDATE_STATE', senderId:id, payload:{ name:p.name, position:p.position, rotation:p.rotation } })}\n\n`);
+        }
+
+        subscribers.set(pid, res);
+        const ka = setInterval(() => { try { res.write(': ping\n\n'); } catch(_) { clearInterval(ka); subscribers.delete(pid); } }, 25000);
+
+        req.on('close', () => {
+          clearInterval(ka);
+          subscribers.delete(pid);
+          players.delete(pid);
+          broadcast(pid, { type:'PLAYER_LEFT', senderId: pid });
+        });
+        return;
+      }
+
+      // Static files
+      const filePath = (pn === '/' || pn === '/index.html')
+        ? path.join(assetsFolder, 'player_viewer.html')
+        : path.join(assetsFolder, pn);
+
+      const rel = path.relative(assetsFolder, filePath);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) { res.writeHead(403); res.end('Forbidden'); return; }
+
+      fs.stat(filePath, (err, stat) => {
+        if (err || !stat.isFile()) { res.writeHead(404); res.end('Not Found'); return; }
+        const ext = path.extname(filePath).toLowerCase();
+        const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
+        if (ext === '.html') headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+        res.writeHead(200, headers);
+        fs.createReadStream(filePath).pipe(res);
+      });
     });
 
-    server.on('error', (err) => {
+    server.on('connection', (socket) => {
+      activeSockets.add(socket);
+      socket.on('close', () => activeSockets.delete(socket));
+    });
+
+    const pruneInterval = setInterval(() => {
+      const cutoff = Date.now() - 15000;
+      for (const [id, p] of players) {
+        if (p.lastSeen < cutoff) { players.delete(id); subscribers.delete(id); broadcast(id, { type:'PLAYER_LEFT', senderId:id }); }
+      }
+    }, 10000);
+    if (pruneInterval.unref) pruneInterval.unref();
+
+    server.__w888version = W888_SERVER_VERSION;
+    server.pruneInterval = pruneInterval;
+    server.subscribers = subscribers;
+    server.activeSockets = activeSockets;
+
+    server.listen(WEB_SERVER_PORT, '0.0.0.0', () => {
+      console.log(`[World888] Server ${W888_SERVER_VERSION} on :${WEB_SERVER_PORT}`);
+    });
+    server.on('error', err => {
       if (err.code === 'EADDRINUSE') {
-        // Port taken by a previous un-closeable process — try to kill & retry once
-        console.warn(`[ScreenModeHelper] Port ${WEB_SERVER_PORT} busy. Attempting forced restart...`);
-        const http = require('http');
-        // Send shutdown signal to old server (it won't have /shutdown, but the request forces a socket close)
-        const req = http.request({ host: 'localhost', port: WEB_SERVER_PORT, path: '/__kill', method: 'GET' });
-        req.on('error', () => {});
-        req.end();
-        // Mark as not-listening so next call rebuilds
-        global.__w888_server = null;
+        // Another process is on this port — check if it's already a correct World888 server
+        requestSecure(`http://localhost:${WEB_SERVER_PORT}/status`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.ok) {
+              console.log(`[World888] External server already running on :${WEB_SERVER_PORT} — adopting it.`);
+              // Adopt it so we don't keep retrying on every call
+              globalThis.__w888_server = { listening: true, __w888version: W888_SERVER_VERSION, _external: true, close: () => {} };
+            } else {
+              console.warn('[World888] Port busy but /status failed. Kill the old process.');
+              globalThis.__w888_server = null;
+            }
+          })
+          .catch(() => {
+            console.warn(`[World888] Port ${WEB_SERVER_PORT} busy — cannot reach /status. Kill the old process.`);
+            globalThis.__w888_server = null;
+          });
       } else {
-        console.error("[ScreenModeHelper] Local web server error:", err);
-        global.__w888_server = null;
+        console.error('[World888] Server error:', err);
+        globalThis.__w888_server = null;
       }
     });
+
+    globalThis.__w888_server = server;
   } catch (e) {
-    console.error("[ScreenModeHelper] Failed to start local web server:", e);
+    console.error('[World888] Failed to start server:', e);
   }
 }
+
 
 /*==============================================================================
   SCENEHELPER / SCREENMODEHELPER COMPONENT
@@ -673,6 +859,156 @@ const ScreenModeHelper = ({
   useEffect(() => {
     activeModeRef.current = activeMode;
   }, [activeMode]);
+
+  // No auto-start on mount. Server must be explicitly toggled by the user.
+
+  // ── Server status state ───────────────────────────────────────────────────
+  const [serverOnline, setServerOnline] = useState(false);
+  const [serverPlayers, setServerPlayers] = useState(0);
+  const [serverPasscode, setServerPasscode] = useState('');
+  const [lanURL, setLanURL] = useState('');
+
+  // On mount: check status ONCE to see if server is already running. No background polling.
+  useEffect(() => {
+    const adapter = dc?.app?.vault?.adapter;
+    const isBrowserMode = !adapter || typeof adapter.exists !== 'function';
+    if (isBrowserMode) return;
+
+    let mounted = true;
+    requestSecure(`http://localhost:${WEB_SERVER_PORT}/status`)
+      .then(r => r.json())
+      .then(d => { 
+        if (mounted) { 
+          setServerOnline(!!d.ok); 
+          setServerPlayers(d.players || 0); 
+          setServerPasscode(d.passcode || '');
+          setLanURL(d.lanURL || '');
+          window.__w888_online = !!d.ok;
+        } 
+      })
+      .catch(() => { 
+        if (mounted) {
+          setServerOnline(false); 
+          window.__w888_online = false;
+        }
+      });
+    return () => { mounted = false; };
+  }, []);
+
+  // Stop the server (kills owned server; external server just shows offline after)
+  const stopWorldServer = useCallback(() => {
+    console.log('[World888] stopWorldServer called.');
+    try {
+      // 1. Kill spawned child process group
+      const pid = globalThis.__w888_server_pid;
+      if (pid) {
+        console.log('[World888] Killing child process group with PID:', pid);
+        try {
+          process.kill(-pid, 'SIGTERM');
+          setTimeout(() => {
+            try { process.kill(-pid, 'SIGKILL'); } catch(_) {}
+          }, 1000);
+        } catch(e) {
+          console.warn('[World888] Failed process.kill(-pid, SIGTERM), fallback normal kill:', e);
+          try { process.kill(pid, 'SIGTERM'); } catch(_) {}
+        }
+        globalThis.__w888_server_pid = null;
+      }
+
+      // 2. Clear inline server resources and close
+      const server = globalThis.__w888_server;
+      if (server) {
+        if (!server._external) {
+          console.log('[World888] Closing owned inline server instance.');
+          if (server.pruneInterval) {
+            clearInterval(server.pruneInterval);
+          }
+          if (server.subscribers) {
+            for (const [id, res] of server.subscribers) {
+              try { res.end(); } catch(_) {}
+            }
+            server.subscribers.clear();
+          }
+          if (server.activeSockets) {
+            for (const socket of server.activeSockets) {
+              try { socket.destroy(); } catch(_) {}
+            }
+            server.activeSockets.clear();
+          }
+          try {
+            server.close(() => console.log('[World888] Server completely stopped and closed.'));
+          } catch(_) {}
+        } else {
+          console.log('[World888] Closing external/adopted server instance via /kill.');
+          requestSecure(`http://localhost:${WEB_SERVER_PORT}/kill`, { method: 'POST' }).catch(() => {});
+        }
+      } else {
+        console.log('[World888] No active owned server reference to close.');
+      }
+      
+      // Fallback: request port kill
+      requestSecure(`http://localhost:${WEB_SERVER_PORT}/kill`, { method: 'POST' }).catch(() => {});
+
+      globalThis.__w888_server = null;
+      setServerOnline(false);
+      setServerPlayers(0);
+      setServerPasscode('');
+      setLanURL('');
+    } catch(e) { console.error('[World888] Stop error:', e); }
+  }, []);
+
+  // Start/stop toggle
+  const toggleServer = useCallback(() => {
+    if (serverOnline) {
+      stopWorldServer();
+    } else {
+      try {
+        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/22 World888/WORLD 888.md';
+        const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
+        const absFolder = dc.app.vault.adapter.getFullPath
+          ? dc.app.vault.adapter.getFullPath(folderPath)
+          : dc.app.vault.adapter.basePath + '/' + folderPath;
+        globalThis.__w888_server = null; // force restart
+        startWorldServer(absFolder + '/assets');
+
+        // Ping up to 3 times to verify if the server started successfully
+        let attempts = 0;
+        const checkStatus = () => {
+          attempts++;
+          requestSecure(`http://localhost:${WEB_SERVER_PORT}/status`)
+            .then(r => r.json())
+            .then(d => {
+              if (d.ok) {
+                setServerOnline(true);
+                setServerPlayers(d.players || 0);
+                setServerPasscode(d.passcode || '');
+                setLanURL(d.lanURL || '');
+                window.__w888_online = true;
+                console.log(`[World888] Server confirmed online on attempt ${attempts}`);
+              } else if (attempts < 3) {
+                setTimeout(checkStatus, attempts * 500);
+              } else {
+                console.warn('[World888] Server failed to return OK status after 3 attempts.');
+                setServerOnline(false);
+                window.__w888_online = false;
+              }
+            })
+            .catch(() => {
+              if (attempts < 3) {
+                setTimeout(checkStatus, attempts * 500);
+              } else {
+                console.warn('[World888] Server unreachable after 3 attempts.');
+                setServerOnline(false);
+                window.__w888_online = false;
+              }
+            });
+        };
+        
+        // Start checking after 400ms
+        setTimeout(checkStatus, 400);
+      } catch(e) { console.error('[World888] Start error:', e); }
+    }
+  }, [serverOnline, stopWorldServer]);
 
   const externalWindowRef = useRef(null);
 
@@ -723,88 +1059,45 @@ const ScreenModeHelper = ({
         applyScreenMode("pip", containerRef.current, originalParentRefForWindow, originalParentRefForPiP, defaultStyle);
       }
     } else if (mode === "character") {
-      // Spawn a new player instance in a real, external OS window using Electron BrowserWindow
+      // Open the World 888 player in a system browser window (LAN-ready)
       try {
         const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         
-        // Use local web server to avoid ERR_BLOCKED_BY_CLIENT file:// restrictions
         const absFolder = dc.app.vault.adapter.getFullPath 
           ? dc.app.vault.adapter.getFullPath(folderPath) 
           : dc.app.vault.adapter.basePath + '/' + folderPath;
-        startLocalWebServer(absFolder);
-        
-        const targetUrl = `http://localhost:8885/player_viewer.html?t=${Date.now()}&glb=http://localhost:8885/glb/scene888.glb`;
-        
-        const remote = require('@electron/remote') || require('electron').remote;
-        if (!remote || !remote.BrowserWindow) {
-          throw new Error("Electron remote is not available.");
-        }
-        
-        const playerWindow = new remote.BrowserWindow({
-          title: "World 888 - Player Viewer",
-          width: 800,
-          height: 600,
-          frame: true,
-          transparent: false,
-          backgroundColor: "#0b0b14",
-          webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
-            enableRemoteModule: true,
-            webSecurity: false
-          }
-        });
-        
-        // --- Establish Cross-Origin Multiplayer Bridge ---
-        // 1. Popup -> Host: register a global function that the /sync HTTP handler calls
-        global.__w888_syncHandler = (payload) => {
-          try {
-            const bc = new BroadcastChannel("obsidian-world-builder-sync");
-            bc.postMessage(payload);
-            bc.close();
-          } catch (e) {}
-        };
 
-        // 2. Host -> Popup: listen on BroadcastChannel and inject into the popup via executeJavaScript
-        const hostBc = new BroadcastChannel("obsidian-world-builder-sync");
-        hostBc.onmessage = (event) => {
-          if (playerWindow && !playerWindow.isDestroyed()) {
-            playerWindow.webContents.executeJavaScript(`
-              if (window.handleExternalSync) {
-                window.handleExternalSync(${JSON.stringify(event.data)});
-              }
-            `).catch(() => {});
+        // Start (or reuse) the standalone multiplayer server
+        startWorldServer(absFolder + '/assets');
+        
+        const baseIpUrl = lanURL || `http://localhost:${WEB_SERVER_PORT}`;
+        const queryParams = `?passcode=${serverPasscode}&t=${Date.now()}`;
+        const playerUrl = `http://localhost:${WEB_SERVER_PORT}/${queryParams}`;
+        const inviteUrl = `${baseIpUrl}/${queryParams}`;
+        
+        // Open in system default browser via Electron shell
+        try {
+          const shell = require('electron').shell;
+          shell.openExternal(playerUrl);
+        } catch (_) {
+          // Fallback: open via Electron remote
+          const remote = require('@electron/remote') || require('electron').remote;
+          if (remote?.shell) {
+            remote.shell.openExternal(playerUrl);
           } else {
-            hostBc.close();
+            window.open(playerUrl, '_blank');
           }
-        };
+        }
 
-        playerWindow.on('closed', () => {
-          hostBc.close();
-          global.__w888_syncHandler = null;
-        });
-        
-        playerWindow.loadURL(targetUrl);
-        playerWindow.once('ready-to-show', () => {
-          playerWindow.show();
-          if (typeof Notice !== 'undefined') new Notice("✨ Secondary player window opened!", 3000);
-        });
-        
+        if (typeof Notice !== 'undefined') {
+          new Notice(`✨ World 888 opened in browser!\nLocal: http://localhost:${WEB_SERVER_PORT}\nLAN Invite: ${inviteUrl}`, 8000);
+        }
+
       } catch (e) {
-        console.error("[ScreenModeHelper] Failed to spawn external player window:", e);
-        // Fallback to DOM-based spawnCustomPiP if Electron is not available
-        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
-        const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
-        const pipOptions = {
-          width: "555px",
-          height: "388px",
-          top: "calc(100% - 388px - 20px)",
-          left: "calc(100% - 555px - 20px)"
-        };
-        spawnCustomPiP(folderPath + "/src/App.jsx", "Character Screen", "WorldView", pipOptions);
+        console.error("[ScreenModeHelper] Failed to open World888 player:", e);
       }
-      return; // Don't change activeMode, just spawn and return
+      return; // Don't change activeMode, just open and return
     } else if (mode === "browser") {
       if (activeMode === "browser") {
         // Exiting browser fullscreen - call applyBrowserMode again to exit fullscreen
@@ -844,9 +1137,9 @@ const ScreenModeHelper = ({
           ? dc.app.vault.adapter.getFullPath(folderPath) 
           : dc.app.vault.adapter.basePath + '/' + folderPath;
         
-        startLocalWebServer(absFolder);
+        startWorldServer(absFolder + '/assets');
         
-        const targetUrl = `http://localhost:8885/player_viewer.html?glb=http://localhost:8885/glb/scene888.glb`;
+        const targetUrl = `http://localhost:8885/`;
         
         const { shell } = require('electron');
         shell.openExternal(targetUrl);
@@ -1087,7 +1380,15 @@ const ScreenModeHelper = ({
     //console.log("[spawnCustomPiP] Spawned custom PiP with final inline zIndex:", hostDiv.style.zIndex);
   }
   
+  const adapter = dc?.app?.vault?.adapter;
+  const isBrowserMode = !adapter || typeof adapter.exists !== 'function';
+  if (isBrowserMode) {
+    return null;
+  }
+
   return (
+    <>
+    <style>{`@keyframes pulse888{0%,100%{opacity:1;box-shadow:0 0 6px #4ade80}50%{opacity:.5;box-shadow:0 0 14px #4ade80}}`}</style>
     <div 
       onClickCapture={(e) => {
         // Capture phase - runs before bubble phase
@@ -1153,8 +1454,7 @@ const ScreenModeHelper = ({
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            // console.log("[ScreenModeHelper] Close PiP button clicked");
-            toggleMode("pip"); // Trigger immediately on mousedown
+            toggleMode("pip");
           }}
           style={buttonStyle(false)}
           title="Close Pip"
@@ -1169,7 +1469,150 @@ const ScreenModeHelper = ({
           />
         </button>
       )}
+
+      {/* ── Server Status Pill + Toggle ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        marginLeft: '6px',
+        paddingLeft: '10px',
+        borderLeft: '1px solid rgba(255,255,255,0.1)',
+      }}>
+        {/* Status pill */}
+        <div
+          title={serverOnline
+            ? `World888 server online · ${serverPlayers} player${serverPlayers !== 1 ? 's' : ''} · http://localhost:${WEB_SERVER_PORT}`
+            : 'World888 server offline'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '4px 10px',
+            borderRadius: '20px',
+            fontSize: '11px',
+            fontWeight: 600,
+            letterSpacing: '0.5px',
+            cursor: 'default',
+            userSelect: 'none',
+            background: serverOnline
+              ? 'rgba(34,197,94,0.15)'
+              : 'rgba(239,68,68,0.12)',
+            border: serverOnline
+              ? '1px solid rgba(34,197,94,0.4)'
+              : '1px solid rgba(239,68,68,0.3)',
+            color: serverOnline ? '#4ade80' : '#f87171',
+            transition: 'all 0.3s ease',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <span style={{
+            width: '7px', height: '7px',
+            borderRadius: '50%',
+            background: serverOnline ? '#4ade80' : '#f87171',
+            boxShadow: serverOnline ? '0 0 6px #4ade80' : 'none',
+            flexShrink: 0,
+            animation: serverOnline ? 'pulse888 2s infinite' : 'none',
+          }} />
+          <span>{serverOnline ? `:${WEB_SERVER_PORT}` : 'Offline'}</span>
+          {serverOnline && serverPlayers > 0 && (
+            <span style={{
+              background: 'rgba(34,197,94,0.25)',
+              borderRadius: '10px',
+              padding: '1px 6px',
+              fontSize: '10px',
+            }}>{serverPlayers}p</span>
+          )}
+        </div>
+
+        {/* Copy LAN Invite Link button */}
+        {serverOnline && lanURL && (
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const inviteLink = `${lanURL}/?passcode=${serverPasscode}`;
+              // Copy to clipboard
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(inviteLink).then(() => {
+                  if (typeof Notice !== 'undefined') new Notice('✨ LAN Invite Link copied to clipboard!', 3000);
+                }).catch(() => {
+                  // Fallback copy using textarea
+                  const el = document.createElement('textarea');
+                  el.value = inviteLink;
+                  document.body.appendChild(el);
+                  el.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(el);
+                  if (typeof Notice !== 'undefined') new Notice('✨ LAN Invite Link copied to clipboard!', 3000);
+                });
+              } else {
+                // Fallback copy using textarea
+                const el = document.createElement('textarea');
+                el.value = inviteLink;
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                if (typeof Notice !== 'undefined') new Notice('✨ LAN Invite Link copied to clipboard!', 3000);
+              }
+            }}
+            title={`Copy LAN Invite Link: ${lanURL}${serverPasscode ? ` (Room: ${serverPasscode})` : ''}`}
+            style={{
+              ...buttonStyle(false),
+              width: '36px',
+              height: '36px',
+              marginRight: 0,
+              background: 'rgba(139, 92, 246, 0.12)',
+              border: '1px solid rgba(139, 92, 246, 0.35)',
+            }}
+          >
+            <dc.Icon
+              icon="share-2"
+              style={{
+                fontSize: '16px',
+                color: '#a78bfa',
+                pointerEvents: 'none',
+              }}
+            />
+          </button>
+        )}
+
+        {/* Power toggle button */}
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleServer();
+          }}
+          title={serverOnline ? 'Stop World888 server' : 'Start World888 server'}
+          style={{
+            ...buttonStyle(false),
+            width: '36px',
+            height: '36px',
+            marginRight: 0,
+            background: serverOnline
+              ? 'rgba(239,68,68,0.15)'
+              : 'rgba(34,197,94,0.12)',
+            border: serverOnline
+              ? '1px solid rgba(239,68,68,0.35)'
+              : '1px solid rgba(34,197,94,0.35)',
+          }}
+        >
+          <dc.Icon
+            icon="power"
+            style={{
+              fontSize: '16px',
+              color: serverOnline ? '#f87171' : '#4ade80',
+              pointerEvents: 'none',
+            }}
+          />
+        </button>
+      </div>
     </div>
+    </>
   );
 };
 

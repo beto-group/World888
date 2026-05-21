@@ -1,8 +1,8 @@
-
+// Force Datacore hot-reload
 const Multiplayer = (() => {
   const CHANNEL_NAME = "obsidian-world-builder-sync";
 
-  function initialize({ scene, canvasRef, characterComponents }) {
+  function initialize({ scene, canvasRef, characterComponents, passcode }) {
     return new Promise((resolve, reject) => {
       // --- Initial Checks ---
       if (typeof BroadcastChannel === "undefined") {
@@ -16,7 +16,14 @@ const Multiplayer = (() => {
       // Optional check for characterComponents if strictly required at init
       // if (!characterComponents) { ... }
 
-      const instanceId = crypto.randomUUID();
+      const instanceId = (
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+              const r = Math.random() * 16 | 0;
+              return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            })
+      );
       const logPrefix = `Multiplayer [${instanceId.slice(-6)}]:`;
       //console.log(`${logPrefix} Initializing...`);
 
@@ -226,103 +233,200 @@ const Multiplayer = (() => {
 
 
       // --- Message Handling ---
-      channel.onmessage = (event) => {
-        // GUARD CLAUSE: Check if cleanup has started or scene is invalid
-        // This check is still useful, even with early detachment, as a safety net.
+      const handleMessage = (message) => {
         if (isCleanedUp || !scene || scene.isDisposed) {
-           // *** Keep the warning or remove it? Let's comment it out for now to reduce noise ***
-           // console.warn(`${logPrefix} Received message but scene is disposed or cleanup initiated. Ignoring.`);
-           // If somehow cleanup didn't run, try again.
            if (!isCleanedUp) cleanup();
            return;
         }
-
-        const message = event.data;
         
-        // Debug logging to track message source
-        if (message && message.senderId) {
-        //   console.log(`${logPrefix} Received message from ${message.senderId.slice(-6)}. My ID: ${instanceId.slice(-6)}. Same? ${message.senderId === instanceId}`);
-        }
-        
-        // Ignore messages without senderId or from self
         if (!message || !message.senderId || message.senderId === instanceId) {
-        //   console.log(`${logPrefix} Ignoring message (self or invalid)`);
           return;
         }
-
-        // console.log(`${logPrefix} Processing message type "${message.type}" from ${message.senderId.slice(-6)}`);
 
         const now = Date.now();
         const senderId = message.senderId;
 
-        // Process message based on type
         switch (message.type) {
           case "UPDATE_STATE": {
             const payload = message.payload;
             if (!payload || !payload.position) {
-                console.warn(`${logPrefix} Received invalid UPDATE_STATE from ${senderId.slice(-6)}:`, payload);
                 break;
             }
 
             let playerData = remotePlayers.get(senderId);
 
-            // If player not seen before, create their mesh
             if (!playerData) {
-                // console.log(`${logPrefix} First state update from ${senderId.slice(-6)}. Creating mesh...`); // Reduce noise
                 const newMesh = getOrCreateRemotePlayerMesh(senderId, payload);
-                if (!newMesh) {
-                     // Error already logged in getOrCreate...
-                     console.error(`${logPrefix} Failed to create mesh for ${senderId.slice(-6)} in onmessage.`);
-                     break; // Don't proceed if mesh creation failed
-                }
-                playerData = remotePlayers.get(senderId); // Get the newly created data
-                 if (!playerData) {
-                    // This should ideally not happen if mesh creation succeeded and map was set
-                    console.error(`${logPrefix} CRITICAL: Failed to get playerData after successful mesh creation for ${senderId.slice(-6)}!`);
-                    break;
-                 }
+                if (!newMesh) break;
+                playerData = remotePlayers.get(senderId);
+                if (!playerData) break;
             }
 
-            // Update target state for interpolation
-            // Ensure data types are correct
             try {
                 playerData.targetPosition = new window.BABYLON.Vector3(payload.position.x, payload.position.y, payload.position.z);
-                playerData.targetRotation = (typeof payload.rotation === 'number') ? payload.rotation : playerData.targetRotation; // Keep old rotation if new is invalid
+                playerData.targetRotation = (typeof payload.rotation === 'number') ? payload.rotation : playerData.targetRotation;
                 playerData.lastUpdateTime = now;
             } catch (updateErr) {
-                 console.warn(`${logPrefix} Error applying state update for ${senderId.slice(-6)}:`, updateErr);
+                 console.warn(`${logPrefix} Error applying state update:`, updateErr);
             }
             break;
           }
 
           case "PLAYER_LEFT": {
-            //console.log(`${logPrefix} Received PLAYER_LEFT from ${senderId.slice(-6)}.`);
             const playerData = remotePlayers.get(senderId);
             if (playerData) {
               if (playerData.mesh && !playerData.mesh.isDisposed()) {
                    playerData.mesh.dispose();
               }
               remotePlayers.delete(senderId);
-              console.log(`${logPrefix} Removed player ${senderId.slice(-6)}. Total remote: ${remotePlayers.size}`);
-            } else {
-                 // console.log(`${logPrefix} Received PLAYER_LEFT for unknown/already removed player ${senderId.slice(-6)}.`); // Reduce noise
             }
             break;
           }
-          default:
-              // console.log(`${logPrefix} Received unknown message type "${message.type}" from ${senderId.slice(-6)}.`); // Reduce noise
         }
       };
 
+      channel.onmessage = (event) => {
+        handleMessage(event.data);
+      };
+
       channel.onmessageerror = (event) => {
-        // Only log if cleanup hasn't started
         if (!isCleanedUp) {
             console.error(`${logPrefix} BroadcastChannel message error:`, event);
         }
       };
 
+      // --- World888 Server SSE Bridge ---
+      let serverHost = (typeof window !== 'undefined' && window.location) ? window.location.hostname : 'localhost';
+      if (serverHost === 'obsidian.md' || !serverHost) {
+        serverHost = 'localhost';
+      }
+      const W888_SERVER = `http://${serverHost}:8885`;
+      
+      const requestSecure = async (url, options = {}) => {
+        try {
+          if (typeof window !== 'undefined' && typeof window.require === 'function') {
+            const obsidian = window.require('obsidian');
+            if (obsidian && typeof obsidian.requestUrl === 'function') {
+              const reqOptions = {
+                url: url,
+                method: options.method || 'GET',
+                headers: options.headers || {},
+                body: typeof options.body === 'object' ? JSON.stringify(options.body) : options.body
+              };
+              const res = await obsidian.requestUrl(reqOptions);
+              return {
+                ok: res.status >= 200 && res.status < 300,
+                status: res.status,
+                json: async () => res.json,
+                text: async () => res.text
+              };
+            }
+          }
+        } catch (_) {}
+        return fetch(url, options);
+      };
+
+      let sseSource = null;
+      let sseSendInterval = null;
+      let isConnectedToSSE = false;
+
+      const connectSSE = () => {
+        try {
+          const passcodeParam = passcode ? `&passcode=${encodeURIComponent(passcode)}` : '';
+          sseSource = new EventSource(`${W888_SERVER}/events?id=${encodeURIComponent(instanceId)}${passcodeParam}`);
+          sseSource.onmessage = (e) => {
+            if (isCleanedUp) return;
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg) {
+                handleMessage(msg);
+              }
+            } catch (_) {}
+          };
+          sseSource.onerror = () => {
+            // Server not running yet — silent fail, browser auto-retries
+          };
+        } catch (_) {}
+      };
+
+      let consecutiveErrors = 0;
+      let isPaused = false;
+      const sendToServer = () => {
+        if (isCleanedUp || !characterComponents?.displayCapsule || isPaused || !window.__w888_online) return;
+        try {
+          const pos = characterComponents.displayCapsule.position;
+          const rot = characterComponents.camera?.rotation.y ?? 0;
+          const passcodeParam = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
+          requestSecure(`${W888_SERVER}/sync${passcodeParam}`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-Passcode': passcode || ''
+            },
+            body: JSON.stringify({
+              id:       instanceId,
+              name:     `Player_${instanceId.slice(-4)}`,
+              position: { x: pos.x, y: pos.y, z: pos.z },
+              rotation: rot
+            })
+          }).then(res => {
+            if (res.ok) {
+              consecutiveErrors = 0;
+            } else if (res.status === 401) {
+              window.dispatchEvent(new CustomEvent('w888_auth_failed'));
+            }
+          }).catch(() => {
+            consecutiveErrors++;
+            if (consecutiveErrors > 1) { // 2 failures in a row
+              isPaused = true;
+              setTimeout(() => { consecutiveErrors = 0; isPaused = false; }, 3000); 
+            }
+          });
+        } catch (_) {}
+      };
+
+      const disconnectSSE = () => {
+        if (sseSendInterval) { clearInterval(sseSendInterval); sseSendInterval = null; }
+        try {
+          if (sseSource) { sseSource.close(); sseSource = null; }
+          if (window.__w888_online) {
+            const passcodeParam = passcode ? `?passcode=${encodeURIComponent(passcode)}` : '';
+            requestSecure(`${W888_SERVER}/leave${passcodeParam}`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'X-Passcode': passcode || ''
+              },
+              body: JSON.stringify({ id: instanceId })
+            }).catch(() => {});
+          }
+        } catch (_) {}
+      };
+
+      const sseManagerInterval = setInterval(() => {
+        if (isCleanedUp) return;
+        if (window.__w888_online && !isConnectedToSSE) {
+          isConnectedToSSE = true;
+          connectSSE();
+          sseSendInterval = setInterval(sendToServer, 80);
+        } else if (!window.__w888_online && isConnectedToSSE) {
+          isConnectedToSSE = false;
+          disconnectSSE();
+        }
+      }, 500);
+
+      // Include SSE cleanup in the main cleanup function
+      const origCleanup = cleanup;
+      const cleanupWithSSE = () => {
+        clearInterval(sseManagerInterval);
+        disconnectSSE();
+        origCleanup(); // CRITICAL FIX: Actually call the original cleanup!
+      };
+      // Patch cleanup to also run SSE teardown
+      scene.onDisposeObservable.addOnce(() => cleanupWithSSE());
+
       // --- Intervals & Observers ---
-      const updateIntervalMs = 100; // Send state 10 times per second
+      const updateIntervalMs = 100; // Send state 10 times per second (BroadcastChannel)
       stateSendInterval = setInterval(sendPlayerState, updateIntervalMs);
 
       // Interpolation observer

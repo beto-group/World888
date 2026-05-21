@@ -8,12 +8,23 @@ function LoadingConfirmation({ onConfirm, onCancel }) {
   useEffect(() => {
     const checkAssets = async () => {
       try {
-        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/22 World888/WORLD 888.md";
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         const glbFilePath = `${folderPath}/assets/glb/scene888.glb`;
         
         const adapter = dc.app.vault.adapter;
-        const exists = await adapter.exists(glbFilePath);
+        let exists = false;
+        if (adapter && typeof adapter.exists === 'function') {
+          exists = await adapter.exists(glbFilePath);
+        } else {
+          // Browser environment fallback
+          try {
+            const res = await fetch('/glb/scene888.glb', { method: 'HEAD' });
+            exists = res.ok;
+          } catch (_) {
+            exists = true; // Fallback to true to allow attempt
+          }
+        }
         
         setAssetsExist(exists);
         

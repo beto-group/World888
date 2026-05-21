@@ -1,0 +1,19 @@
+{
+  "name": "world-888",
+  "version": "1.0.0",
+  "description": "<div align=\"center\">   <a name=\"readme-top\"></a>   <img src=\"https://raw.githubusercontent.com/beto-group/beto.assets/main/BETO.logo.animated.svg?raw=true\" alt=\"LOGO\" width=\"160\">   <h1 align=\"center\">WORLD 888</h1>   <h3 align=\"center\"> Pʜʏsɪᴄs Sᴀɴᴅʙᴏx ᴀɴᴅ Mᴜʟᴛɪᴘʟᴀʏᴇʀ Wᴏʀʟᴅ </h3> </div>",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  },
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  }
+}

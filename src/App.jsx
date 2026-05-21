@@ -17,7 +17,9 @@ const { LoadingConfirmation } = await dc.require(
   folderPath + "/src/LoadingConfirmation.jsx"
 );
 
-function WorldView() {
+function WorldView(props = {}) {
+  const { initialPasscode: _initialPasscode } = props;
+
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const helperRef = useRef(null); // For ScreenModeHelper communication
@@ -28,11 +30,123 @@ function WorldView() {
   const [isFullTab, setIsFullTab] = useState(true); // Start in full-tab mode
   const [showLoadingConfirm, setShowLoadingConfirm] = useState(true); // Show confirmation popup
   const [isLoadingWorld, setIsLoadingWorld] = useState(false); // Track loading state
+  const [loadError, setLoadError] = useState(null); // Track any initialization errors
   const stateRefs = useRef({}).current;
+
+  // Passcode authentication states
+  // If initialPasscode is provided (web bundle), seed it immediately and skip the status check
+  const [passcode, setPasscode] = useState(_initialPasscode || null);
+  const [passcodeError, setPasscodeError] = useState(null);
+  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(_initialPasscode ? false : true);
+  const [isHost, setIsHost] = useState(false);
 
   // Memoize glbBasePath to prevent unnecessary re-renders
   const glbBasePath = useMemo(() => {
     return `${folderPath}/assets/glb/`;
+  }, []);
+
+  // Fetch server status on mount to check if passcode is auto-discoverable (localhost/Obsidian)
+  useEffect(() => {
+    // If we already have a passcode from props (web bundle), skip the status check entirely
+    if (_initialPasscode) return;
+
+    const adapter = dc?.app?.vault?.adapter;
+    const isBrowser = !adapter || typeof adapter.exists !== 'function';
+    
+    // Check if passcode is provided in the URL query params
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryPasscode = urlParams.get('passcode');
+    if (queryPasscode) {
+      const cleanPasscode = queryPasscode.trim().toUpperCase();
+      if (cleanPasscode.match(/^888-[A-Z0-9]{4}$/i)) {
+        localStorage.setItem('w888_passcode', cleanPasscode);
+        setPasscode(cleanPasscode);
+        setIsHost(false);
+        setCheckingStatus(false);
+        // Clean URL parameters from the address bar for aesthetic cleanliness
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
+    }
+
+    if (!isBrowser) {
+      setCheckingStatus(false);
+      setIsHost(true);
+      return;
+    }
+
+    let host = window.location.hostname;
+    if (host === 'obsidian.md' || !host) {
+      host = 'localhost';
+    }
+
+    const requestSecure = async (url, options = {}) => {
+      try {
+        if (typeof window !== 'undefined' && typeof window.require === 'function') {
+          const obsidian = window.require('obsidian');
+          if (obsidian && typeof obsidian.requestUrl === 'function') {
+            const res = await obsidian.requestUrl({
+              url: url,
+              method: options.method || 'GET',
+              headers: options.headers || {},
+              body: typeof options.body === 'object' ? JSON.stringify(options.body) : options.body
+            });
+            return {
+              ok: res.status >= 200 && res.status < 300,
+              status: res.status,
+              json: async () => res.json,
+              text: async () => res.text
+            };
+          }
+        }
+      } catch (_) {}
+      return fetch(url, options);
+    };
+
+    requestSecure(`http://${host}:8885/status`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          if (data.passcode) {
+            setPasscode(data.passcode);
+            setIsHost(true);
+            setCheckingStatus(false);
+          } else {
+            setIsHost(false);
+            const saved = localStorage.getItem('w888_passcode');
+            if (saved) {
+              setPasscode(saved);
+              setCheckingStatus(false);
+            } else {
+              setShowPasscodeModal(true);
+              setCheckingStatus(false);
+            }
+          }
+        } else {
+          setCheckingStatus(false);
+        }
+      })
+      .catch(() => {
+        setCheckingStatus(false);
+      });
+  }, []);
+
+  // Listen for authentication failures
+  useEffect(() => {
+    const handleAuthFailed = () => {
+      setPasscodeError("Invalid room passcode. Access denied.");
+      localStorage.removeItem('w888_passcode');
+      if (worldResourcesRef.current) {
+        try { worldResourcesRef.current.cleanup(); } catch (_) {}
+        setWorldResources(null);
+        worldResourcesRef.current = null;
+      }
+      setIsLoadingWorld(false);
+      setShowPasscodeModal(true);
+    };
+    window.addEventListener('w888_auth_failed', handleAuthFailed);
+    return () => window.removeEventListener('w888_auth_failed', handleAuthFailed);
   }, []);
 
   // Initialize preventDefaultInputs to block all commands
@@ -178,8 +292,8 @@ function WorldView() {
   };
 
   useEffect(() => {
-    // Don't start loading until user confirms
-    if (showLoadingConfirm || !isLoadingWorld) {
+    // Don't start loading until user confirms and passcode is verified (if needed)
+    if (showLoadingConfirm || !isLoadingWorld || checkingStatus || showPasscodeModal) {
       return;
     }
 
@@ -192,7 +306,7 @@ function WorldView() {
       console.warn("WorldView: canvasRef is null initially in useEffect.");
     }
 
-    WorldLogic({ canvasRef, glbBasePath }) // Pass the ref object and GLB base path
+    WorldLogic({ canvasRef, glbBasePath, passcode }) // Pass the ref object, GLB base path, and passcode
       .then((resources) => {
         if (isMounted) {
           console.log("WorldView: World resources initialized.", resources);
@@ -215,7 +329,8 @@ function WorldView() {
       .catch((err) => {
         console.error("WorldView: Error initializing world:", err);
         if (isMounted) {
-          setWorldResources(null); // Indicate error state if needed
+          setWorldResources(null);
+          setLoadError(err.message || String(err) || "Unknown error occurred during world initialization.");
         }
       });
 
@@ -241,7 +356,31 @@ function WorldView() {
       handleBlur();
       //console.log("WorldView: preventDefaultInputs cleanup completed.");
     };
-  }, [glbBasePath, isLoadingWorld, showLoadingConfirm]); // Re-run if GLB base path changes or loading state changes
+  }, [glbBasePath, isLoadingWorld, showLoadingConfirm, checkingStatus, showPasscodeModal, passcode]); // Re-run if GLB base path changes or loading state changes
+
+  const handlePasscodeSubmit = (e) => {
+    e.preventDefault();
+    const inputVal = e.target.elements.passcodeInput.value.trim().toUpperCase();
+    if (!inputVal) {
+      setPasscodeError("Passcode cannot be empty");
+      return;
+    }
+    // Simple format validation: 888-XXXX
+    if (!inputVal.startsWith('888-') && inputVal.length === 4) {
+      const formatted = `888-${inputVal}`;
+      localStorage.setItem('w888_passcode', formatted);
+      setPasscode(formatted);
+      setPasscodeError(null);
+      setShowPasscodeModal(false);
+    } else if (inputVal.match(/^888-[A-Z0-9]{4}$/i)) {
+      localStorage.setItem('w888_passcode', inputVal);
+      setPasscode(inputVal);
+      setPasscodeError(null);
+      setShowPasscodeModal(false);
+    } else {
+      setPasscodeError("Invalid format. Must be like 888-A4F3");
+    }
+  };
 
   // Render logic
   return (
@@ -257,8 +396,143 @@ function WorldView() {
         cursor: "crosshair", // Subtle crosshair cursor on the container
       }}
     >
+      {/* Show passcode prompt if authentication is required */}
+      {showPasscodeModal && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'radial-gradient(circle at center, rgba(16, 12, 32, 0.9) 0%, rgba(5, 5, 10, 0.98) 100%)',
+          backdropFilter: 'blur(20px)',
+          zIndex: 10001,
+          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          color: '#ffffff'
+        }}>
+          <form onSubmit={handlePasscodeSubmit} style={{
+            background: 'rgba(20, 20, 30, 0.6)',
+            border: '1px solid rgba(139, 92, 246, 0.25)',
+            boxShadow: '0 24px 64px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
+            padding: '40px 48px',
+            borderRadius: '24px',
+            width: '100%',
+            maxWidth: '440px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            {/* Header */}
+            <div>
+              <h2 style={{
+                fontSize: '28px',
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #a78bfa 0%, #8b5cf6 50%, #6d28d9 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                margin: '0 0 8px 0',
+                letterSpacing: '-0.5px'
+              }}>WORLD 888</h2>
+              <p style={{
+                color: 'rgba(255, 255, 255, 0.6)',
+                fontSize: '14px',
+                margin: 0,
+                lineHeight: '1.5'
+              }}>Enter Room Passcode to join multiplayer</p>
+            </div>
+
+            {/* Input Field */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
+              <label htmlFor="passcodeInput" style={{
+                fontSize: '11px',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                fontWeight: '600',
+                color: 'rgba(255, 255, 255, 0.4)'
+              }}>Passcode (Format: 888-XXXX)</label>
+              <input
+                id="passcodeInput"
+                name="passcodeInput"
+                type="text"
+                maxLength={8}
+                placeholder="888-A4F3"
+                autoComplete="off"
+                autoFocus
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                  border: passcodeError ? '1px solid #ef4444' : '1px solid rgba(139, 92, 246, 0.3)',
+                  borderRadius: '12px',
+                  padding: '14px 18px',
+                  fontSize: '18px',
+                  color: '#ffffff',
+                  outline: 'none',
+                  textAlign: 'center',
+                  letterSpacing: '3px',
+                  fontFamily: 'monospace',
+                  transition: 'border-color 0.2s, box-shadow 0.2s'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#8b5cf6';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.25)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = passcodeError ? '#ef4444' : 'rgba(139, 92, 246, 0.3)';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
+              {passcodeError && (
+                <div style={{
+                  color: '#ef4444',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  marginTop: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span>⚠️</span> {passcodeError}
+                </div>
+              )}
+            </div>
+
+            {/* Submit Button */}
+            <button type="submit" style={{
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '14px',
+              color: '#ffffff',
+              fontSize: '15px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)',
+              transition: 'transform 0.1s, box-shadow 0.2s, opacity 0.2s'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.boxShadow = '0 6px 16px rgba(124, 58, 237, 0.45)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(124, 58, 237, 0.3)';
+              e.currentTarget.style.transform = 'none';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'translateY(1px)';
+            }}
+            >
+              Verify & Connect
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* Show loading confirmation popup */}
-      {showLoadingConfirm && (
+      {showLoadingConfirm && !showPasscodeModal && (
         <LoadingConfirmation 
           onConfirm={handleLoadWorld}
           onCancel={() => setShowLoadingConfirm(false)}
@@ -331,7 +605,7 @@ function WorldView() {
             />
             <span style={{ fontWeight: '500' }}>
               {worldResources.multiplayerResources ?
-                (worldResources.multiplayerResources.isBroadcastChannel ? `Multiplayer Active (${worldResources.multiplayerResources.instanceId.slice(-6)})` : 'Multiplayer Active') :
+                `Multiplayer Active (${worldResources.multiplayerResources.instanceId.slice(-6)})${passcode ? ` · Room: ${passcode}` : ''}` :
                 'Single Player'}
             </span>
           </div>
@@ -389,46 +663,48 @@ function WorldView() {
             Initializing World 888
           </div>
           
-          {/* Bouncing Dots */}
-          <div style={{
-            display: 'flex',
-            gap: '8px',
-            marginTop: '4px'
-          }}>
+          {/* Status Text or Error */}
+          {loadError ? (
             <div style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: '#8b5cf6',
-              animation: 'bounce 1.4s infinite ease-in-out both',
-              animationDelay: '-0.32s'
-            }}></div>
-            <div style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: '#8b5cf6',
-              animation: 'bounce 1.4s infinite ease-in-out both',
-              animationDelay: '-0.16s'
-            }}></div>
-            <div style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: '#8b5cf6',
-              animation: 'bounce 1.4s infinite ease-in-out both'
-            }}></div>
-          </div>
-          
-          {/* Status Text */}
-          <span style={{ 
-            fontSize: '13px', 
-            color: 'rgba(255, 255, 255, 0.4)',
-            marginTop: '8px',
-            fontFamily: 'system-ui, -apple-system, sans-serif'
-          }}>
-            Building environment and loading assets...
-          </span>
+              color: '#ef4444',
+              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              padding: '12px 16px',
+              borderRadius: '8px',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              marginTop: '16px',
+              fontSize: '14px',
+              maxWidth: '80%',
+              wordBreak: 'break-word'
+            }}>
+              <strong>Error Loading World:</strong><br/>
+              {loadError}
+              <div style={{ marginTop: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+                If you opened this file directly in a browser, please ensure you run the local server first (`node server/world888-server.js`) to serve the GLB files.
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Bouncing Dots */}
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                marginTop: '4px'
+              }}>
+                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#8b5cf6', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '-0.32s' }}></div>
+                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#8b5cf6', animation: 'bounce 1.4s infinite ease-in-out both', animationDelay: '-0.16s' }}></div>
+                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#8b5cf6', animation: 'bounce 1.4s infinite ease-in-out both' }}></div>
+              </div>
+              
+              <span style={{ 
+                fontSize: '13px', 
+                color: 'rgba(255, 255, 255, 0.4)',
+                marginTop: '8px',
+                fontFamily: 'system-ui, -apple-system, sans-serif'
+              }}>
+                Building environment and loading assets...
+              </span>
+            </>
+          )}
           
           {/* Animations */}
           <style>{`

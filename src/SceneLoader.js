@@ -318,5 +318,154 @@ async function sceneLoader({ canvasRef, glbConfig = {
     }
 }
 
-// Export the sceneLoader function
-return { sceneLoader };
+// ── SceneLoader object for Engine.js / WorldLogic.js (v2) ────────────────────
+// loadIntoScene: loads GLB into an EXISTING scene (Engine already created it).
+// Returns { glbRootNode, environmentMeshes, animatedMeshes, sceneCleanup }
+async function _loadIntoScene(scene, glbConfig, folderPath) {
+  if (!scene || scene.isDisposed) throw new Error('SceneLoader.loadIntoScene: invalid scene');
+
+  // Determine GLB URL
+  const { url, path: glbPath, file, groundOptions } = glbConfig;
+  const adapter = dc?.app?.vault?.adapter;
+  const isBrowser = !adapter || typeof adapter.exists !== 'function';
+
+  let glbUrl;
+  if (isBrowser) {
+    glbUrl = '/glb/' + file;
+  } else {
+    const localCachePath = `${folderPath}/assets/glb/${file}`;
+    const localExists = await adapter.exists(localCachePath);
+    if (localExists) {
+      glbUrl = adapter.getResourcePath(localCachePath);
+    } else {
+      const fullRemote = `${url}${glbPath}${file}`;
+      try {
+        const res = await fetch(fullRemote);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf  = await res.arrayBuffer();
+        const dir  = `${folderPath}/assets/glb`;
+        if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
+        await adapter.writeBinary(localCachePath, new Uint8Array(buf));
+        glbUrl = adapter.getResourcePath(localCachePath);
+      } catch (e) {
+        console.warn('[SceneLoader] Cache failed, falling back to remote URL:', e);
+        glbUrl = `${url}${glbPath}${file}`;
+      }
+    }
+  }
+
+  // Optional ground mesh
+  let groundMesh = null;
+  if (groundOptions?.enable) {
+    groundMesh = window.BABYLON.MeshBuilder.CreateGround('sceneGround', {
+      width: groundOptions.size || 1000,
+      height: groundOptions.size || 1000,
+      subdivisions: groundOptions.subdivisions || 2,
+    }, scene);
+    groundMesh.position.y = groundOptions.yPosition ?? 0;
+
+    if (groundOptions.makeInvisible) {
+      groundMesh.isVisible = false;
+    } else {
+      const mat = new window.BABYLON.StandardMaterial('groundMat', scene);
+      const c   = groundOptions.color;
+      mat.diffuseColor  = c ? new window.BABYLON.Color3(...c) : new window.BABYLON.Color3(0.3, 0.5, 0.3);
+      mat.specularColor = new window.BABYLON.Color3(0.1, 0.1, 0.1);
+      groundMesh.material = mat;
+    }
+    groundMesh.isPickable = false;
+  }
+
+  // Load GLB
+  const cleanUrl = glbUrl.split('?')[0];
+  const lastSlash = cleanUrl.lastIndexOf('/');
+  const rootUrl   = cleanUrl.substring(0, lastSlash + 1);
+  const filename  = cleanUrl.substring(lastSlash + 1);
+  const result    = await window.BABYLON.SceneLoader.ImportMeshAsync('', rootUrl, filename, scene, null, '.glb');
+
+  const allImportedNodes = [];
+  const animatedMeshes   = [];
+  let glbRootNode = null;
+
+  // Deterministic rotation speed by name
+  const MIN_SPD = 0.001, MAX_SPD = 0.01;
+  function seededSpeed(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = (Math.imul(31, hash) + name.charCodeAt(i)) | 0;
+    const t = Math.abs(hash % 10000) / 10000;
+    return MIN_SPD + t * (MAX_SPD - MIN_SPD);
+  }
+
+  // Process imported meshes
+  for (const node of result.meshes) {
+    if (!node || node.isDisposed()) continue;
+    if (node.name === '__root__') { glbRootNode = node; allImportedNodes.push(node); continue; }
+    if (node instanceof window.BABYLON.Mesh) {
+      const hasPos = node.getVerticesData(window.BABYLON.VertexBuffer.PositionKind);
+      if (!hasPos || hasPos.length === 0) { node.dispose(); continue; }
+      node.isPickable = false;
+      allImportedNodes.push(node);
+    } else {
+      allImportedNodes.push(node);
+    }
+  }
+
+  // Setup rotation & hover animations
+  const rotatingMeshesWithSpeeds = [];
+  let obeliskMesh = null, obeliskOrigY = 0, hoverTime = 0;
+  const HOVER_AMP = 0.05, HOVER_FREQ = 1.5;
+
+  for (const node of allImportedNodes) {
+    if (node instanceof window.BABYLON.Mesh && node.parent === glbRootNode && node.name !== '__root__') {
+      const speed = seededSpeed(node.name);
+      rotatingMeshesWithSpeeds.push({ mesh: node, speed });
+      animatedMeshes.push(node);
+      if (node.name === 'obelisk') {
+        obeliskMesh = node;
+        obeliskOrigY = node.position.y;
+      }
+    }
+  }
+
+  const animObserver = scene.onBeforeRenderObservable.add(() => {
+    // 1. Rotate meshes directly
+    for (const item of rotatingMeshesWithSpeeds) {
+      item.mesh.rotate(window.BABYLON.Axis.Y, item.speed, window.BABYLON.Space.WORLD);
+      item.mesh.computeWorldMatrix(true);
+      
+      // 2. Sync kinematic physics body
+      const body = item.mesh.physicsAggregate?.body;
+      if (body && body.motionType === window.BABYLON.PhysicsMotionType.KINEMATIC) {
+        body.setTargetTransform(item.mesh.getAbsolutePosition(), item.mesh.absoluteRotationQuaternion);
+      }
+    }
+
+    // 3. Hover obelisk
+    if (obeliskMesh) {
+      const eng = scene.getEngine();
+      hoverTime += (eng.getDeltaTime() / 1000) * HOVER_FREQ;
+      obeliskMesh.position.y = obeliskOrigY + HOVER_AMP * Math.sin(hoverTime);
+      obeliskMesh.computeWorldMatrix(true);
+      
+      const body = obeliskMesh.physicsAggregate?.body;
+      if (body && body.motionType === window.BABYLON.PhysicsMotionType.KINEMATIC) {
+        body.setTargetTransform(obeliskMesh.getAbsolutePosition(), obeliskMesh.absoluteRotationQuaternion);
+      }
+    }
+  });
+
+  const environmentMeshes = [...allImportedNodes];
+  if (groundMesh) environmentMeshes.push(groundMesh);
+
+  function sceneCleanup() {
+    scene?.onBeforeRenderObservable.remove(animObserver);
+    if (groundMesh && !groundMesh.isDisposed()) groundMesh.dispose();
+  }
+
+  return { glbRootNode, environmentMeshes, animatedMeshes, sceneCleanup };
+}
+
+const SceneLoader = { loadIntoScene: _loadIntoScene };
+
+// Legacy export — sceneLoader function still available for web-src bundle
+return { sceneLoader, SceneLoader };

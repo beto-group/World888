@@ -22,14 +22,23 @@
 <img src="assets/gifs/world888.clip.gif" alt="World 888 Walkthrough" width="100%">
 
 <div align="center">
-  <p><i>WORLD 888 is a persistent, physics-enabled 3D simulation sandbox built as a native Datacore component, utilizing Babylon.js and the Havok physics engine to provide first-person mechanics, BroadcastChannel multiplayer synchronization, and in-world object control.</i></p>
+  <p><i>WORLD 888 is a persistent, physics-enabled 3D simulation sandbox built as a native Datacore component, utilizing Babylon.js and the Havok physics engine to provide first-person mechanics, dual-transport multiplayer synchronization, and in-world object control across both Obsidian and modern web browsers.</i></p>
 </div>
 
 ## Introduction
 
-WORLD 888 brings advanced 3D visualization and real-time physical simulation to Obsidian notes. Powered by the Havok physics engine, the component allows you to explore custom-built 3D layouts, spawn interactive assets, and run local multiplayer sandbox instances synchronized natively across side-by-side Obsidian pane leafs.
+WORLD 888 brings advanced 3D visualization and real-time physical simulation to Obsidian notes and web browsers. Powered by the Havok physics engine, the component allows you to explore custom-built 3D layouts, spawn interactive assets, and run local multiplayer sandbox instances synchronized natively across side-by-side Obsidian pane leafs and standalone web tabs.
 
 ## Features
+
+### Standalone Web Component & Server
+- **Cross-Platform Play**: Run the environment as a native Obsidian component or as a standalone web application (`http://localhost:8885`).
+- **Node.js Sync Server**: Built-in standalone server (`world888-server.js`) that serves static assets, provides a web entry point, and handles cross-device player synchronization.
+
+### Multiplayer Synchronizer
+- **Dual-Transport Sync**: Uses `BroadcastChannel` for zero-latency sync between Obsidian tabs, and SSE + HTTP POST (`EventSource`) for cross-device sync via the local Node server.
+- **Dynamic Player Ghosts**: Remote players are represented using animated `cat.glb` models with unique, dynamically generated HSL color tints based on their connection IDs.
+- **State Animations**: Fully animates ghost players for walking, running, crouching, and sliding based on broadcasted player states.
 
 ### Runtime and Agentic Safety
 - **Dynamic Watchdog Daemon**: Integrates a file-based command watcher loop that monitors `mcp_commands.json` for hot reloading.
@@ -43,7 +52,6 @@ WORLD 888 brings advanced 3D visualization and real-time physical simulation to 
 
 ### User Interface and Developer Loop
 - **Physics-Based character locomotion**: Sprinting, crouching, jumping, and slope-dependent sliding mechanics.
-- **Multiplayer Synchronizer**: Real-time position and rotation synchronization between concurrent local tab views.
 - **Sphere Pip Spawner**: Spawns interactive spheres in-scene that can be clicked to spawn floating secondary window views.
 
 ## Directory Index & Components
@@ -53,8 +61,8 @@ The package exposes the following files:
 | File | Description |
 | :--- | :--- |
 | **[WORLD 888.md](WORLD%20888.md)** | The main Obsidian leaf entry point loader query. |
-| **[src/index.jsx](src/index.jsx)** | Entry bootstrapper hook that handles namespace imports and hot reloading. |
-| **[src/App.jsx](src/App.jsx)** | Main coordinator component coordinating states, canvas, and event blocking. |
+| **[_RESOURCES/DATACORE/_DONE/WORLD 888/src/index.jsx](_RESOURCES/DATACORE/_DONE/WORLD%20888/src/index.jsx)** | Entry bootstrapper hook that handles namespace imports and hot reloading. |
+| **[_RESOURCES/DATACORE/_DONE/WORLD 888/src/App.jsx](_RESOURCES/DATACORE/_DONE/WORLD%20888/src/App.jsx)** | Main coordinator component coordinating states, canvas, and event blocking. |
 | **[src/WorldLogic.js](src/WorldLogic.js)** | Scene initializer, script loading orchestrator, and rendering pipeline. |
 | **[src/HavokPhysics.js](src/HavokPhysics.js)** | WASM Havok interface and physics aggregate factory helpers. |
 | **[src/SceneLoader.js](src/SceneLoader.js)** | Import mesh asynchronous wrapper with local cache integration. |
@@ -68,6 +76,9 @@ The package exposes the following files:
 | **[src/LoadScript.js](src/LoadScript.js)** | Dynamic CDN script loader with promise caching. |
 | **[src/Multiplayer.js](src/Multiplayer.js)** | BroadcastChannel positioning and rotation updates listener. |
 | **[src/PreventDefaultInputs.js](src/PreventDefaultInputs.js)** | Hardened Obsidian key event and Command Palette blocker. |
+| **[server/world888-server.js](server/world888-server.js)** | Standalone Node.js server for static assets and cross-client SSE/POST synchronization. |
+| **[web-src/index.jsx](web-src/index.jsx)** | Web browser entry point that mocks Datacore dependencies. |
+| **[assets/bundle.js](assets/bundle.js)** | Pre-compiled ESBuild browser distribution bundle. |
 | **[METADATA.md](METADATA.md)** | Manifest YAML properties outlining compatibility, runtime parameters, and index categories. |
 | **[CONTRIBUTION.md](CONTRIBUTION.md)** | Developer compilation guidelines and coding standards. |
 | **[LICENSE.md](LICENSE.md)** | MIT permissive distribution license. |

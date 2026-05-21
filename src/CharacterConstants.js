@@ -1,60 +1,82 @@
 // In CharacterConstants.js (or wherever createConstants is defined)
 
 function createConstants(normalCharacterHeight, crouchCharacterHeight, characterRadius) {
-    const runSpeedBase = 7.7;
+    const runSpeedBase = 5.7; // Apex sprint: 5.7 m/s
 
     const constants = {
-        // --- Existing Movement & Jump ---
-        walkSpeed: 4.4,
-        runSpeed: runSpeedBase,
-        crouchSpeed: 2.2,
-        inAirSpeed: 3.8,
-        jumpHeight: 1.5,
-        sprintJumpHeight: 2.2,
+        // ─── Base Speeds (Apex Legends values) ───────────────────────────────────
+        walkSpeed:   3.8,          // Apex base walk
+        runSpeed:    runSpeedBase, // Apex sprint
+        crouchSpeed: 1.75,         // Apex crouch-walk
+        inAirSpeed:  4.2,          // Slightly above walk for responsive air strafes
 
-        // --- Sliding General ---
-        slideInitialBoost: 1.44, // Multiplier for sprint/static slides ONLY
-        slideFriction: 0.97,     // Friction factor per 1/60th sec (closer to 1 = less friction)
-        slideMinSpeed: 1.5,      // Speed below which sliding stops
-        slideJumpForwardBoostFactor: 1.77, // Multiplier applied to *runSpeed* for forward boost on slide jump
-        staticSlideVelocityThreshold: 0.1, // Max speed to initiate slide from static crouch + move
-        // (Optional - Add if you want input control during slide)
-        // slideControlFactor: 25.0, // How much WASD influences slide direction (higher = more control)
+        // ─── Jump ────────────────────────────────────────────────────────────────
+        jumpHeight:       1.35,    // Standard Apex jump feel
+        sprintJumpHeight: 1.65,    // Sprint jump gives a slight extra height
 
-        // --- Landing/Falling -> Slide ---
-        minFallDistanceForBoost: 0.5,          // Min fall height for speed *boost* above runSpeed on landing slide.
-        minFallDistanceForLandingSlide: 0.3,   // Min fall height to trigger *any* landing slide (if crouched).
-        fallDistanceToSpeedScale: 2.5,         // How much sqrt(fall distance) scales added speed boost.
-        maxSlideSpeedFromFall: runSpeedBase * 1.8, // Max speed achievable purely from fall boost blend.
+        // ─── B-Hopping ───────────────────────────────────────────────────────────
+        bHopWindow:       0.18,              // Seconds after landing where jump re-press gives bhop boost
+        bHopBoostFactor:  1.22,              // Horizontal speed multiplier on a successful b-hop
+        bHopMaxChainSpeed: runSpeedBase * 1.55, // Hard cap on chained b-hop horizontal speed
 
-        // --- Sliding Slope Physics (ADDED) ---
-        slopeSlideAccelerationScale: 15.0, // How strongly gravity influences slide speed on slopes.
-        maxSlopeSlideSpeed: runSpeedBase * 2.2, // Absolute maximum speed achievable while sliding downhill (relative to run speed).
-        minSlopeAngleForAccel: 2.0,       // Minimum slope angle (degrees) to trigger acceleration. 0 means any slope helps.
+        // ─── Tap Strafing ────────────────────────────────────────────────────────
+        tapStrafeAirAccel: 30.0,   // Instantaneous lateral accel burst (m/s²)
+        tapStrafeMaxAdd:   3.8,    // Max speed added above current horizontal on a single tap
+        tapStrafeMinSpeed: 3.5,    // Only triggers if moving this fast horizontally (prevents accidental trigger)
 
-        // --- Core & Camera ---
-        characterGravity: new window.BABYLON.Vector3(0, -18, 0),
-        turnSpeed: 0.15,
+        // ─── Wall Bounce ─────────────────────────────────────────────────────────
+        wallBounceMinSpeed:   4.0, // Min horizontal speed to detect a wall bounce
+        wallBounceBoostFactor: 1.3, // Redirect speed multiplier
+        wallBounceWindow:      0.12,// Jump-press window (seconds) after wall collision to activate
+
+        // ─── Super Glide ─────────────────────────────────────────────────────────
+        superGlideSpeed:  10.3,    // Forward velocity on a successful super-glide (Apex: 10.3 m/s)
+        superGlideWindow: 0.14,    // Jump must be pressed within this window of mantle peak
+
+        // ─── Landing Shock ───────────────────────────────────────────────────────
+        landingShockMinFall:    8.0, // Fall distance (m) that triggers a landing shock
+        landingShockDuration:   0.45,// Seconds the slow-down lasts
+        landingShockSpeedMult:  0.45,// Speed multiplier during shock (45% of normal)
+
+        // ─── Sliding ─────────────────────────────────────────────────────────────
+        slideInitialBoost: 1.5,    // Multiplier for sprint/static slides
+        slideFriction:     0.985,  // Friction factor per 1/60th sec (high = long slides like Apex)
+        slideMinSpeed:     1.2,    // Speed below which sliding stops
+        slideJumpForwardBoostFactor: 1.8,  // Forward boost on slide-jump
+        staticSlideVelocityThreshold: 0.1, // Max speed to initiate a static-crouch slide
+
+        // ─── Slope Sliding ───────────────────────────────────────────────────────
+        slopeSlideAccelerationScale: 22.0,        // Downhill slide acceleration (higher = more Apex downhill feel)
+        maxSlopeSlideSpeed:          runSpeedBase * 2.4, // Max speed achievable sliding downhill
+        minSlopeAngleForAccel:       2.0,         // Degrees below which slope doesn't help
+
+        // ─── Landing / Falling → Slide ───────────────────────────────────────────
+        minFallDistanceForBoost:        0.5,
+        minFallDistanceForLandingSlide: 0.3,
+        fallDistanceToSpeedScale:       2.8,
+        maxSlideSpeedFromFall:          runSpeedBase * 1.9,
+
+        // ─── Core & Camera ───────────────────────────────────────────────────────
+        characterGravity:    new window.BABYLON.Vector3(0, -20, 0), // Snappier Apex-feel gravity
+        turnSpeed:           0.18,
         normalCameraOffsetY: normalCharacterHeight * 0.4,
         crouchCameraOffsetY: crouchCharacterHeight * 0.4,
 
-        // --- Internal / Debug ---
-        forwardLocalSpace: new window.BABYLON.Vector3(0, 0, 1),
-        maxDotProductForSlopeAccel: 1.0, // Default, calculated below (ADDED)
-        DEBUG_JUMP: true,
-        DEBUG_SPRINT: true,
-        DEBUG_CROUCH: true,
-        DEBUG_SLIDE: true,
+        // ─── Internal ────────────────────────────────────────────────────────────
+        forwardLocalSpace:          new window.BABYLON.Vector3(0, 0, 1),
+        maxDotProductForSlopeAccel: 1.0,
+        DEBUG_JUMP:   false,
+        DEBUG_SPRINT: false,
+        DEBUG_CROUCH: false,
+        DEBUG_SLIDE:  false,
     };
 
-    // --- Calculate Derived Constants (ADDED/MODIFIED) ---
+    // Derived: slope accel dot-product threshold
     if (constants.minSlopeAngleForAccel > 0) {
         constants.maxDotProductForSlopeAccel = Math.cos(constants.minSlopeAngleForAccel * (Math.PI / 180.0));
     } else {
-        // Use a value slightly less than 1 for numerical stability if min angle is 0
         constants.maxDotProductForSlopeAccel = 0.9999;
     }
-    // Safety fallback
     constants.maxDotProductForSlopeAccel = constants.maxDotProductForSlopeAccel ?? 1.0;
 
     return constants;

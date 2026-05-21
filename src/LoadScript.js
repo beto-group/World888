@@ -36,13 +36,42 @@ async function loadScript(src, onload, onerror) {
     }
   };
 
+  const getApp = () => {
+    if (typeof dc !== 'undefined' && dc.app) return dc.app;
+    if (typeof window !== 'undefined' && window.dc?.app) return window.dc.app;
+    if (typeof app !== 'undefined') return app;
+    return null;
+  };
+
   return new Promise(async (resolve, reject) => {
     const scriptElement = document.createElement("script");
     scriptElement.async = true; // Keep async behavior
 
     try {
+      const appObj = getApp();
+      const adapter = appObj?.vault?.adapter;
+
       if (isUrl) {
-        // --- URL Handling (Fetch & Cache) ---
+        // --- URL Handling ---
+        
+        // If we are in browser (no real adapter) or caching is not supported, load via standard script tag
+        if (!adapter || typeof adapter.exists !== 'function') {
+          // IMPORTANT: We must wait for the script's onload event before resolving
+          // the Promise, otherwise window.BABYLON will be undefined when we try to use it.
+          scriptElement.src = src;
+          scriptElement.onload = () => {
+            if (onload) onload();
+            resolve(scriptElement);
+          };
+          scriptElement.onerror = (err) => {
+            const error = new Error(`Failed to load script from CDN: ${src}`);
+            console.error(error);
+            if (onerror) onerror(error);
+            reject(error);
+          };
+          document.body.appendChild(scriptElement);
+          return; // DO NOT fall through — wait for onload/onerror callbacks above
+        }
 
         // Generate a safe filename from the URL
         // Replace protocol, slashes, and common unsafe characters
@@ -54,7 +83,6 @@ async function loadScript(src, onload, onerror) {
         let scriptText = null;
 
         // 1. Check if the cached file exists
-        const adapter = app.vault.adapter; // Get the adapter
         const cachedExists = await adapter.exists(cachePath);
 
         if (cachedExists) {
@@ -98,8 +126,21 @@ async function loadScript(src, onload, onerror) {
 
       } else {
         // --- Local Vault Path Handling ---
-        // console.log(`Loading script from local vault path: ${src}`);
-        const adapter = app.vault.adapter;
+        // If we are in browser (no real adapter), fall back to loading relatively
+        if (!adapter || typeof adapter.exists !== 'function') {
+          scriptElement.src = src.replace(/^\.\//, '/');
+          scriptElement.onload = () => {
+            if (onload) onload();
+            resolve(scriptElement);
+          };
+          scriptElement.onerror = (err) => {
+            if (onerror) onerror(err);
+            reject(err);
+          };
+          document.body.appendChild(scriptElement);
+          return;
+        }
+
         const localFileExists = await adapter.exists(src);
 
         if (!localFileExists) {

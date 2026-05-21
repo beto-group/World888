@@ -49,7 +49,7 @@ function setupJumpInput(stateVariables, attemptJumpTrigger, logDebug) {
     logDebug("[InputMod:Jump]", "Init"); const isMac = navigator.platform.toUpperCase().includes('MAC');
     function handleKeyDown(key) { if (key === ' ' || key === 'j') { logDebug("[CharJump]", `${key === ' ' ? 'Space' : 'J'} pressed. Held(Before): ${stateVariables.isJumpKeyHeld}`); attemptJumpTrigger(key === ' ' ? 'SpaceKey' : 'JKey'); stateVariables.isJumpKeyHeld = true; return true; } return false; }
     function handleKeyUp(key) { if (key === ' ' || key === 'j') { logDebug("[CharJump]", `${key === ' ' ? 'Space' : 'J'} released. Held=false`); stateVariables.isJumpKeyHeld = false; return true; } return false; }
-    function handlePointerEvent(pointerInfo) { if (pointerInfo.type === window.BABYLON.PointerEventTypes.POINTERWHEEL) { const event = pointerInfo.event; const scrollDown = isMac ? (event.deltaY < 0) : (event.deltaY > 0); if (scrollDown) { logDebug("[CharInput]", `Scroll Down Detected.`); event.preventDefault(); const canJump = (stateVariables.state === "ON_GROUND" || stateVariables.state === "SLIDING" || stateVariables.justLanded); if (canJump && !stateVariables.wantJump) { logDebug("[CharInput]", `>> Triggering jump via scroll.`); attemptJumpTrigger(`MouseScrollDown`); } else { logDebug("[CharInput]", `>> Scroll jump ignored.`); } return true; } } return false; }
+    function handlePointerEvent(pointerInfo) { if (pointerInfo.type === window.BABYLON.PointerEventTypes.POINTERWHEEL) { const event = pointerInfo.event; const scrollDown = isMac ? (event.deltaY < 0) : (event.deltaY > 0); if (scrollDown) { logDebug("[CharInput]", `Scroll Down Detected.`); if (event && typeof event.preventDefault === 'function') event.preventDefault(); const canJump = (stateVariables.state === "ON_GROUND" || stateVariables.state === "SLIDING" || stateVariables.justLanded); if (canJump && !stateVariables.wantJump) { logDebug("[CharInput]", `>> Triggering jump via scroll.`); attemptJumpTrigger(`MouseScrollDown`); } else { logDebug("[CharInput]", `>> Scroll jump ignored.`); } return true; } } return false; }
     function resetInput() { if (stateVariables.wantJump || stateVariables.isJumpKeyHeld) { logDebug("[InputMod:Jump]", "Resetting jump state."); stateVariables.wantJump = false; stateVariables.isJumpKeyHeld = false; } }
     return { handleKeyDown, handleKeyUp, handlePointerEvent, resetInput };
 }
@@ -123,17 +123,11 @@ function setupCrouchSlideInput(stateVariables, characterController, constants, u
 
         if (isToggleKey) {
             logDebug("[CharCrouch]", "'c' released.");
-            if (stateVariables.isCrouching && !stateVariables.isSlidingKeyDown && (stateVariables.state === "ON_GROUND" || isAirborneBeforeStandCheck)) {
-                logDebug("[CharCrouch]", "Released 'c', attempting to stand."); stateVariables.isCrouching = false;
-                if(isAirborneBeforeStandCheck) {
-                     logDebug("[CharSlide]", "Standing mid-air via 'c' release, cancelling slide intent.");
-                     stateVariables.wantSlideOnLand = false; stateVariables.slideDirectionIntentLocal.set(0,0,0); stoodUpMidAir = true;
-                }
-                updateVisualState();
-            }
+            // Toggle key ('c') does not un-crouch on release. Un-crouch is handled on the next key press.
         } else {
             logDebug("[CharCrouch/Slide]", `Control released.`); stateVariables.isSlidingKeyDown = false;
-            if (stateVariables.isCrouching && !stateVariables.pressedKeys.has('c') && (stateVariables.state === "ON_GROUND" || isAirborneBeforeStandCheck)) {
+            // Uncrouch if 'control' is released, even if currently sliding (which cancels the slide)
+            if (stateVariables.isCrouching && !stateVariables.pressedKeys.has('c') && (stateVariables.state === "ON_GROUND" || isAirborneBeforeStandCheck || stateVariables.state === "SLIDING")) {
                  logDebug("[CharCrouch]", `Released Control, attempting to stand.`); stateVariables.isCrouching = false;
                  if(isAirborneBeforeStandCheck) {
                      logDebug("[CharSlide]", "Standing mid-air via Ctrl release, cancelling slide intent.");
@@ -199,13 +193,15 @@ const CharacterLogic = (() => {
         }
 
         function keyboardInputCallback(kbInfo) {
-            const event = kbInfo.event; const key = event.key.toLowerCase();
+            const event = kbInfo.event;
+            if (!event || !event.key) return;
+            const key = event.key.toLowerCase();
             const actionKeys = ['w','s','a','d','arrowup','arrowdown','arrowleft','arrowright',' ','shift','j','c','control','tab'];
 
             if (kbInfo.type === window.BABYLON.KeyboardEventTypes.KEYDOWN && key === 'tab') {
                 logDebug("[CharInput]", 'Tab pressed. Toggling camera/resetting input.'); 
-                event.preventDefault();
-                event.stopPropagation();
+                if (event && typeof event.preventDefault === 'function') event.preventDefault();
+                if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
                 cameraControlsManager?.toggleCameraMode?.();
                 const keysBeforeClear = Array.from(stateVariables.pressedKeys);
                 stateVariables.pressedKeys.clear(); logDebug("[KeyPress]", `Keys cleared via tab. Were: ${keysBeforeClear.join(',')}`);
@@ -214,8 +210,8 @@ const CharacterLogic = (() => {
             }
 
             if (actionKeys.includes(key) && key !== 'tab' && cameraControlsManager?.isPointerLocked()) {
-                 event.preventDefault();
-                 event.stopPropagation();
+                 if (event && typeof event.preventDefault === 'function') event.preventDefault();
+                 if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
                  processKey(key, kbInfo.type === window.BABYLON.KeyboardEventTypes.KEYDOWN);
             }
         }
@@ -271,6 +267,18 @@ const CharacterLogic = (() => {
             slideVelocity: new window.BABYLON.Vector3(0, 0, 0), pressedKeys: new Set(),
             wantSlideOnLand: false, justLandedIntoSlide: false, slideDirectionIntentLocal: new window.BABYLON.Vector3(0, 0, 0),
             fallStartY: null, lastGroundY: null,
+            // ── Apex mechanics ──────────────────────────────────────────────────
+            bHopTimer:      0,     // Counts down after landing; jump in this window = bhop
+            wantBHop:       false, // Set when jump is pressed while bHopTimer is live
+            wallBounceTimer: 0,    // Window after wall collision for redirect-jump
+            wallBouncePreVel: null,// Horizontal velocity captured just before wall hit
+            superGlideTimer:  0,   // Window at peak of mantle for super-glide
+            superGlideActive: false,
+            landingShockTimer: 0,  // Remaining seconds of speed penalty after hard landing
+            lastInputDir:     null,// For tap-strafe detection (prev frame input)
+            lastHorizVelWorld: null,// For wall-bounce detection
+            mantleTimer:      0,   // Tracks rapid Y-rise (mantle detection)
+            lastPosY:         null, // For mantle peak detection
         };
 
         function updateVisualState() {
@@ -288,11 +296,29 @@ const CharacterLogic = (() => {
         function attemptJumpTrigger(triggerSource) {
             logDebug("[CharJump]", `Attempt via ${triggerSource}. State=${stateVariables.state}, Landed=${stateVariables.justLanded}, Crouch=${stateVariables.isCrouching}`);
             if (stateVariables.state === "ON_GROUND" || stateVariables.state === "SLIDING" || stateVariables.justLanded) {
-                stateVariables.wantJump = true; logDebug("[CharJump]", `  >> Set wantJump = true`);
+                stateVariables.wantJump = true;
+                logDebug("[CharJump]", `  >> Set wantJump = true`);
                 const canSprintJump = stateVariables.isShiftPressed && stateVariables.inputDirection.z > 0 && !stateVariables.isCrouching && stateVariables.state !== "SLIDING";
                 stateVariables.isSprinting = canSprintJump;
-                logDebug("[CharJump]", `  >> Set isSprinting=${stateVariables.isSprinting} for jump.`);
-            } else { logDebug("[CharJump]", `  >> Not setting wantJump.`); }
+            } else if (stateVariables.state === "IN_AIR") {
+                // B-Hop: player pressed jump while in air — flag it so velocity calc can use it on next landing frame
+                if (stateVariables.bHopTimer > 0) {
+                    stateVariables.wantBHop = true;
+                    logDebug("[CharJump]", `  >> B-Hop armed (timer=${stateVariables.bHopTimer.toFixed(3)})`);
+                }
+                // Wall Bounce: player pressed jump during wall-bounce window
+                if (stateVariables.wallBounceTimer > 0) {
+                    stateVariables.wantJump = true;
+                    logDebug("[CharJump]", `  >> Wall Bounce jump triggered!`);
+                }
+                // Super Glide: player pressed jump during mantle peak window
+                if (stateVariables.superGlideTimer > 0) {
+                    stateVariables.wantJump = true;
+                    logDebug("[CharJump]", `  >> Super Glide triggered!`);
+                }
+            } else {
+                logDebug("[CharJump]", `  >> Not setting wantJump.`);
+            }
         }
 
         function getNextState(supportInfo) {
@@ -344,7 +370,20 @@ const CharacterLogic = (() => {
                             }
                         }
 
-                        stateVariables.fallStartY = null; stateVariables.lastGroundY = null; stateVariables.wantSlideOnLand = false; stateVariables.jumpedFromSlide = false; updateVisualState();
+                        stateVariables.fallStartY = null; stateVariables.lastGroundY = null;
+                        stateVariables.wantSlideOnLand = false; stateVariables.jumpedFromSlide = false;
+
+                        // ── B-Hop: open the window on every landing ──────────────────────
+                        stateVariables.bHopTimer = constants.bHopWindow;
+                        stateVariables.wantBHop = false;
+
+                        // ── Landing Shock: penalise hard landings ────────────────────────
+                        if (fallDistance >= constants.landingShockMinFall) {
+                            stateVariables.landingShockTimer = constants.landingShockDuration;
+                            logDebug("[CharLandCheck]", `Landing shock! Fall=${fallDistance.toFixed(1)}m, Duration=${constants.landingShockDuration}s`);
+                        }
+
+                        updateVisualState();
                     }
                     break;
                 case "ON_GROUND":
@@ -384,10 +423,55 @@ const CharacterLogic = (() => {
 
             const support = characterController.checkSupport(dt, constants.characterGravity.normalizeToNew());
             const currentVelocity = characterController.getVelocity();
+            const currentPos = characterController.getPosition();
 
-            if ((stateVariables.state === "ON_GROUND" || stateVariables.state === "SLIDING") && support.supportedState === window.BABYLON.CharacterSupportedState.SUPPORTED) {
-                stateVariables.lastGroundY = characterController.getPosition().y;
+            // Track last ground Y
+            if ((stateVariables.state === "ON_GROUND" || stateVariables.state === "SLIDING") &&
+                support.supportedState === window.BABYLON.CharacterSupportedState.SUPPORTED) {
+                stateVariables.lastGroundY = currentPos.y;
             }
+
+            // ── B-Hop window countdown (starts when landing, counts down in air) ──
+            if (stateVariables.bHopTimer > 0) {
+                stateVariables.bHopTimer = Math.max(0, stateVariables.bHopTimer - dt);
+                if (stateVariables.bHopTimer <= 0) stateVariables.wantBHop = false;
+            }
+
+            // ── Wall-bounce window countdown ──────────────────────────────────
+            if (stateVariables.wallBounceTimer > 0) {
+                stateVariables.wallBounceTimer = Math.max(0, stateVariables.wallBounceTimer - dt);
+                if (stateVariables.wallBounceTimer <= 0) stateVariables.wallBouncePreVel = null;
+            }
+
+            // ── Super-glide mantle detection ──────────────────────────────────
+            // Detect a rapid Y rise while supported (= ledge step-up / mantle)
+            const isSupported = support.supportedState === window.BABYLON.CharacterSupportedState.SUPPORTED;
+            if (isSupported && stateVariables.lastPosY !== null) {
+                const yRise = currentPos.y - stateVariables.lastPosY;
+                const riseThreshold = 0.08 * dt * 60; // ~0.08 m per frame at 60 fps = ~4.8 m/s rise
+                if (yRise > riseThreshold) {
+                    // Rapid rise: set mantle timer
+                    stateVariables.mantleTimer = 0.25; // 250ms mantle window
+                }
+            }
+            stateVariables.lastPosY = currentPos.y;
+
+            // Super glide: at peak of mantle (mantleTimer counting down, Y vel near 0)
+            if (stateVariables.mantleTimer > 0) {
+                stateVariables.mantleTimer = Math.max(0, stateVariables.mantleTimer - dt);
+                const upVel = currentVelocity.y;
+                if (Math.abs(upVel) < 0.5 && stateVariables.state !== "ON_GROUND") {
+                    // Near peak — open super-glide window
+                    stateVariables.superGlideTimer = constants.superGlideWindow;
+                    stateVariables.mantleTimer = 0;
+                }
+            }
+            if (stateVariables.superGlideTimer > 0) {
+                stateVariables.superGlideTimer = Math.max(0, stateVariables.superGlideTimer - dt);
+            }
+
+            // ── Landing shock: triggered in getNextState on hard landings ─────
+            // (landingShockTimer is decremented inside _calculateDesiredVelocity ON_GROUND case)
 
             const desiredLinearVelocity = _calculateDesiredVelocity(
                 dt, support, stateVariables.characterTargetOrientation, currentVelocity,
@@ -400,6 +484,8 @@ const CharacterLogic = (() => {
         }
 
         function renderUpdateCallback() {
+            physicsUpdateCallback(); // Run logic in render loop to match monitor Hz
+
             const currentControllerPos = characterController.getPosition();
             const physicsHeight = normalCharacterHeight;
             const visualHeight = (displayCapsule.metadata.baseHeight || normalCharacterHeight) * displayCapsule.scaling.y;
@@ -413,8 +499,8 @@ const CharacterLogic = (() => {
         }
 
         logDebug("[CharLogic:Movement]", "Registering observers...");
-        const physicsObserver = scene.onAfterPhysicsObservable.add(physicsUpdateCallback);
-        const renderObserver = scene.onBeforeRenderObservable.add(renderUpdateCallback);
+        // Insert first so Character updates BEFORE Camera, eliminating the 1-frame camera tracking lag
+        const renderObserver = scene.onBeforeRenderObservable.add(renderUpdateCallback, undefined, true);
         const inputHandler = setupInputHandling(scene, canvasRef, cameraControlsManager, stateVariables, characterController, constants, attemptJumpTrigger, updateVisualState, logDebug);
         if (!inputHandler) return null;
 
@@ -435,7 +521,6 @@ const CharacterLogic = (() => {
             cleanup: () => {
                  logDebug("[CharLogic:Movement]", "Cleanup...");
                  if (inputHandler && typeof inputHandler.cleanup === 'function') { try { inputHandler.cleanup(); } catch(e) { console.warn("[CharLogic:Movement] Error in input cleanup:", e); } }
-                 try { if (scene && physicsObserver) scene.onAfterPhysicsObservable.remove(physicsObserver); } catch(e) { console.warn("[CharLogic:Movement] Error removing physics observer:", e); }
                  try { if (scene && renderObserver) scene.onBeforeRenderObservable.remove(renderObserver); } catch(e) { console.warn("[CharLogic:Movement] Error removing render observer:", e); }
                  stateVariables.pressedKeys.clear();
                  logDebug("[CharLogic:Movement]", "Cleanup finished.");

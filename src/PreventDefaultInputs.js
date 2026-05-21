@@ -12,11 +12,15 @@ function preventDefaultInputs({ viewRef }) {
     if (!isFocusedRef.current) return; // Only block when focused
 
     const key = event.key.toLowerCase();
+    const gameKeys = ['w','s','a','d','arrowup','arrowdown','arrowleft','arrowright',' ','shift','j','c','control','tab'];
 
     // Block all modifier key events (Ctrl, Meta, Alt)
     if (event.metaKey || event.ctrlKey || event.altKey) {
-      // Allow the 'control' key itself which is used for crouch/slide in-game
-      if (key === 'control') {
+      // Allow game movement/action keys to propagate to the canvas even when a modifier is held.
+      // We call preventDefault() to stop Obsidian shortcuts (like Ctrl+W closing the pane),
+      // but do NOT call stopPropagation(), so Babylon.js can still read the 'w' key.
+      if (gameKeys.includes(key)) {
+        event.preventDefault();
         return;
       }
       event.stopPropagation();
@@ -28,7 +32,6 @@ function preventDefaultInputs({ viewRef }) {
     }
 
     // Allow game movement/action keys to propagate to the canvas
-    const gameKeys = ['w','s','a','d','arrowup','arrowdown','arrowleft','arrowright',' ','shift','j','c','control','tab'];
     if (gameKeys.includes(key)) {
       return;
     }
