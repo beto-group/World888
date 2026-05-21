@@ -61,8 +61,8 @@ The package exposes the following files:
 | File | Description |
 | :--- | :--- |
 | **[WORLD 888.md](WORLD%20888.md)** | The main Obsidian leaf entry point loader query. |
-| **[_RESOURCES/DATACORE/_DONE/WORLD 888/src/index.jsx](_RESOURCES/DATACORE/_DONE/WORLD%20888/src/index.jsx)** | Entry bootstrapper hook that handles namespace imports and hot reloading. |
-| **[_RESOURCES/DATACORE/_DONE/WORLD 888/src/App.jsx](_RESOURCES/DATACORE/_DONE/WORLD%20888/src/App.jsx)** | Main coordinator component coordinating states, canvas, and event blocking. |
+| **[src/index.jsx](src/index.jsx)** | Entry bootstrapper hook that handles namespace imports and hot reloading. |
+| **[src/App.jsx](src/App.jsx)** | Main coordinator component coordinating states, canvas, and event blocking. |
 | **[src/WorldLogic.js](src/WorldLogic.js)** | Scene initializer, script loading orchestrator, and rendering pipeline. |
 | **[src/HavokPhysics.js](src/HavokPhysics.js)** | WASM Havok interface and physics aggregate factory helpers. |
 | **[src/SceneLoader.js](src/SceneLoader.js)** | Import mesh asynchronous wrapper with local cache integration. |
