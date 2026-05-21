@@ -71,7 +71,14 @@ function cors(res) {
 
 function isLoopback(req) {
   const ip = req.socket.remoteAddress;
-  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  if (!ip) return false;
+  return (
+    ip === '127.0.0.1' ||
+    ip === '::1' ||
+    ip === '::ffff:127.0.0.1' ||
+    ip.endsWith('127.0.0.1') ||
+    ip === 'localhost'
+  );
 }
 
 function verifyPasscode(req, url) {
@@ -213,9 +220,10 @@ function createHandler(assetsFolder) {
       return;
     }
 
-    // ── POST /kill ────────────────────────────────────────────────────────────
-    if (req.method === 'POST' && pathname === '/kill') {
+    // ── POST/GET /kill ────────────────────────────────────────────────────────────
+    if ((req.method === 'POST' || req.method === 'GET') && pathname === '/kill') {
       if (!isLoopback(req)) {
+        console.warn(`[World888] Forbidden /kill attempt from remoteAddress: ${req.socket.remoteAddress}`);
         res.writeHead(403, { 'Content-Type': 'text/plain' });
         res.end('Forbidden - Admin commands restricted to localhost');
         return;
@@ -224,6 +232,10 @@ function createHandler(assetsFolder) {
       res.end('shutting down');
       console.log('[World888] Received /kill signal, shutting down process.');
       
+      // Delete PID file if it exists
+      const pidFile = path.join(__dirname, 'world888-server.pid');
+      try { if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile); } catch(_) {}
+
       if (pruneInterval) clearInterval(pruneInterval);
       for (const [id, subRes] of subscribers) {
         try { subRes.end(); } catch(_) {}
@@ -356,6 +368,25 @@ function createHandler(assetsFolder) {
 function start(assetsFolder, port = PORT) {
   const server = http.createServer(createHandler(assetsFolder));
   serverInstance = server;
+
+  // Write PID file if run standalone in standard Node (not in Electron/Obsidian)
+  const isElectron = !!(process.versions && process.versions.electron);
+  if (!isElectron) {
+    const pidFile = path.join(__dirname, 'world888-server.pid');
+    try {
+      fs.writeFileSync(pidFile, process.pid.toString(), 'utf8');
+      console.log(`[World888] PID file written: ${pidFile} (PID: ${process.pid})`);
+      
+      const cleanup = () => {
+        try { if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile); } catch(_) {}
+      };
+      process.on('exit', cleanup);
+      process.on('SIGINT', () => { cleanup(); process.exit(0); });
+      process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+    } catch (err) {
+      console.warn('[World888] Failed to write PID file:', err);
+    }
+  }
 
   // Track sockets
   server.on('connection', (socket) => {

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const componentPath = path.join(__dirname, 'D.q.world888.component.md');
+const componentPath = './D.q.world888.component.md';
 
 const files = {
   // ── UI ───────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ try {
   let mdContent = fs.readFileSync(componentPath, 'utf8');
 
   for (const [header, srcPath] of Object.entries(files)) {
-    const absoluteSrcPath = path.join(__dirname, srcPath);
+    const absoluteSrcPath = './' + srcPath;
     if (!fs.existsSync(absoluteSrcPath)) {
       console.warn(`⚠️ Source file ${srcPath} does not exist. Skipping.`);
       continue;
@@ -76,15 +76,15 @@ try {
     if (header === 'ViewComponent') {
       const targetGlbPattern = /\/\/ Memoize glbBasePath to prevent unnecessary re-renders\s+const glbBasePath = useMemo\(\(\) => \{\s+return `\$\{folderPath\}\/assets\/glb\/`;\s+\}, \[\]\);/;
       const replacementGlb = `// Get current file path to construct relative GLB path (memoized to prevent re-renders)
-  const currentFilePath = dc.resolvePath("D.q.world888.component");
+  const currentFilePath = dc.resolvePath("WORLD 888");
   
   // Memoize glbBasePath to prevent unnecessary re-renders
   const glbBasePath = useMemo(() => {
-    // Extract the directory path and construct the path to _resources/glb
-    // Current path is like: "_RESOURCES/DATACORE/22 World888/D.q.world888.component.md"
-    // We want: "_RESOURCES/DATACORE/22 World888/_resources/glb/"
-    const componentDir = currentFilePath ? currentFilePath.substring(0, currentFilePath.lastIndexOf('/')) : '_RESOURCES/DATACORE/22 World888';
-    const path = \`\${componentDir}/_resources/glb/\`;
+    // Extract the directory path and construct the path to assets/glb
+    // Current path is like: "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md"
+    // We want: "_RESOURCES/DATACORE/_DONE/WORLD 888/assets/glb/"
+    const componentDir = currentFilePath ? currentFilePath.substring(0, currentFilePath.lastIndexOf('/')) : '_RESOURCES/DATACORE/_DONE/WORLD 888';
+    const path = \`\${componentDir}/assets/glb/\`;
     return path;
   }, [currentFilePath]);`;
 

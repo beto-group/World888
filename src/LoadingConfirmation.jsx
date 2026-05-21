@@ -8,7 +8,7 @@ function LoadingConfirmation({ onConfirm, onCancel }) {
   useEffect(() => {
     const checkAssets = async () => {
       try {
-        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/22 World888/WORLD 888.md";
+        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         const glbFilePath = `${folderPath}/assets/glb/scene888.glb`;
         

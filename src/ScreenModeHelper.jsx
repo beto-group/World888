@@ -497,7 +497,7 @@ async function createExternalWindow() {
     });
     
     // Resolve absolute path to assets/player_viewer.html
-    const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/22 World888/WORLD 888.md";
+    const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
     const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
     const absFolderPath = dc.app.vault.adapter.getFullPath 
       ? dc.app.vault.adapter.getFullPath(folderPath) 
@@ -666,6 +666,18 @@ function startWorldServer(assetsFolder) {
       });
     }
 
+    function isLoopback(req) {
+      const ip = req.socket.remoteAddress;
+      if (!ip) return false;
+      return (
+        ip === '127.0.0.1' ||
+        ip === '::1' ||
+        ip === '::ffff:127.0.0.1' ||
+        ip.endsWith('127.0.0.1') ||
+        ip === 'localhost'
+      );
+    }
+
     const MIME = {
       '.html':'text/html; charset=utf-8', '.js':'application/javascript',
       '.css':'text/css', '.json':'application/json',
@@ -721,7 +733,13 @@ function startWorldServer(assetsFolder) {
         return;
       }
 
-      if (req.method === 'POST' && pn === '/kill') {
+      if ((req.method === 'POST' || req.method === 'GET') && pn === '/kill') {
+        if (!isLoopback(req)) {
+          console.warn(`[World888] Forbidden /kill attempt from remoteAddress: ${req.socket.remoteAddress}`);
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          res.end('Forbidden - Admin commands restricted to localhost');
+          return;
+        }
         res.writeHead(200); res.end('shutting down');
         console.log('[World888] Received /kill signal, shutting down zombie server.');
         if (pruneInterval) clearInterval(pruneInterval);
@@ -899,20 +917,71 @@ const ScreenModeHelper = ({
   const stopWorldServer = useCallback(() => {
     console.log('[World888] stopWorldServer called.');
     try {
-      // 1. Kill spawned child process group
-      const pid = globalThis.__w888_server_pid;
-      if (pid) {
-        console.log('[World888] Killing child process group with PID:', pid);
+      const fs = require('fs');
+      const path = require('path');
+      
+      const shellPid = globalThis.__w888_server_pid;
+      let filePid = null;
+      let pidFilePath = null;
+      try {
+        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md';
+        const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
+        const absFolder = dc.app.vault.adapter.getFullPath
+          ? dc.app.vault.adapter.getFullPath(folderPath)
+          : dc.app.vault.adapter.basePath + '/' + folderPath;
+        pidFilePath = path.join(absFolder, 'server', 'world888-server.pid');
+      } catch (err) {
+        console.warn('[World888] Could not resolve pid file path:', err);
+      }
+
+      if (pidFilePath && fs.existsSync(pidFilePath)) {
         try {
-          process.kill(-pid, 'SIGTERM');
-          setTimeout(() => {
-            try { process.kill(-pid, 'SIGKILL'); } catch(_) {}
-          }, 1000);
-        } catch(e) {
-          console.warn('[World888] Failed process.kill(-pid, SIGTERM), fallback normal kill:', e);
-          try { process.kill(pid, 'SIGTERM'); } catch(_) {}
+          const pidContent = fs.readFileSync(pidFilePath, 'utf8').trim();
+          filePid = parseInt(pidContent, 10);
+          console.log('[World888] Read PID from pid file:', filePid);
+        } catch (err) {
+          console.warn('[World888] Failed to read PID file:', err);
         }
-        globalThis.__w888_server_pid = null;
+      }
+
+      const killProcess = (p, label) => {
+        if (!p) return;
+        console.log(`[World888] Killing ${label} process with PID:`, p);
+        try {
+          process.kill(p, 'SIGTERM');
+          setTimeout(() => {
+            try {
+              process.kill(p, 0); // check if still alive
+              process.kill(p, 'SIGKILL');
+            } catch (_) {}
+          }, 1000);
+        } catch (e) {
+          console.warn(`[World888] process.kill(${label}, ${p}) failed, trying process group kill:`, e);
+          try {
+            process.kill(-p, 'SIGTERM');
+            setTimeout(() => {
+              try { process.kill(-p, 'SIGKILL'); } catch (_) {}
+            }, 1000);
+          } catch (ge) {
+            console.warn(`[World888] Failed process group kill for ${label} ${p}:`, ge);
+          }
+        }
+      };
+
+      // 1. Kill spawned processes (Node server process and/or shell parent)
+      if (filePid) {
+        killProcess(filePid, 'server');
+      }
+      if (shellPid && shellPid !== filePid) {
+        killProcess(shellPid, 'shell');
+      }
+      globalThis.__w888_server_pid = null;
+
+      if (pidFilePath && fs.existsSync(pidFilePath)) {
+        try {
+          fs.unlinkSync(pidFilePath);
+          console.log('[World888] Deleted PID file:', pidFilePath);
+        } catch (_) {}
       }
 
       // 2. Clear inline server resources and close
@@ -947,6 +1016,13 @@ const ScreenModeHelper = ({
       }
       
       // Fallback: request port kill
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        try {
+          navigator.sendBeacon(`http://localhost:${WEB_SERVER_PORT}/kill`);
+        } catch (e) {
+          console.warn('[World888] sendBeacon failed:', e);
+        }
+      }
       requestSecure(`http://localhost:${WEB_SERVER_PORT}/kill`, { method: 'POST' }).catch(() => {});
 
       globalThis.__w888_server = null;
@@ -963,7 +1039,7 @@ const ScreenModeHelper = ({
       stopWorldServer();
     } else {
       try {
-        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/22 World888/WORLD 888.md';
+        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md';
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         const absFolder = dc.app.vault.adapter.getFullPath
           ? dc.app.vault.adapter.getFullPath(folderPath)
@@ -1279,14 +1355,15 @@ const ScreenModeHelper = ({
     return () => clearInterval(interval);
   }, [activeMode, containerRef, toggleMode, onModeChange]);
 
-  // Clean up external window on unmount
+  // Clean up external window and stop server on unmount
   useEffect(() => {
     return () => {
       if (externalWindowRef.current && !externalWindowRef.current.isDestroyed()) {
         externalWindowRef.current.close();
       }
+      stopWorldServer();
     };
-  }, []);
+  }, [stopWorldServer]);
 
   const iconStyle = { width: "24px", height: "24px" };
   
