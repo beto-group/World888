@@ -1,7 +1,7 @@
 ---
 author: beto.group
 contributor: []
-version: 2.0.7
+version: 2.0.8
 id: world-888
 name: WORLD 888
 description: A persistent, physics-enabled 3D world featuring a first-person controller, dual-transport local multiplayer synchronization (Obsidian tabs + Browser clients), and interactive object manipulation.

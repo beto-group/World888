@@ -15928,11 +15928,29 @@ var World888App = (() => {
         const { spawn } = __require("child_process");
         const userShell = process.env.SHELL || (os2.platform() === "win32" ? "powershell.exe" : "/bin/sh");
         const isMacOrLinux = os2.platform() === "darwin" || os2.platform() === "linux";
-        const cmd = `exec node "${serverScriptPath}" "${assetsFolder}"`;
+        const rootDir = path.dirname(path.dirname(serverScriptPath));
+        const nodeModulesPath = path.join(rootDir, "node_modules");
+        const hasNodeModules = fs.existsSync(nodeModulesPath);
+        let cmd;
+        if (isMacOrLinux) {
+          if (!hasNodeModules) {
+            cmd = `npm install && exec node "${serverScriptPath}" "${assetsFolder}"`;
+          } else {
+            cmd = `exec node "${serverScriptPath}" "${assetsFolder}"`;
+          }
+        } else {
+          const isPowerShell = userShell.includes("powershell") || userShell.includes("pwsh");
+          if (!hasNodeModules) {
+            cmd = isPowerShell ? `npm install; node "${serverScriptPath}" "${assetsFolder}"` : `npm install && node "${serverScriptPath}" "${assetsFolder}"`;
+          } else {
+            cmd = `node "${serverScriptPath}" "${assetsFolder}"`;
+          }
+        }
         const shellArgs = isMacOrLinux && (userShell.includes("zsh") || userShell.includes("bash")) ? ["-l", "-c", cmd] : ["-c", cmd];
         try {
           console.log("[World888] Spawning server via shell:", userShell, shellArgs);
           const child = spawn(userShell, shellArgs, {
+            cwd: rootDir,
             detached: true,
             stdio: "ignore"
           });
