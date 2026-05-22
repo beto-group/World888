@@ -17726,10 +17726,11 @@ LAN Invite: ${inviteUrl}`, 8e3);
       };
     }, [isFullTab]);
     const handleLoadWorld = () => {
+      setShowLoadingConfirm(false);
       setIsLoadingWorld(true);
     };
     (0, import_react5.useEffect)(() => {
-      if (!isLoadingWorld || checkingStatus || showPasscodeModal) {
+      if (showLoadingConfirm || !isLoadingWorld || checkingStatus || showPasscodeModal) {
         return;
       }
       let isMounted = true;
@@ -17749,8 +17750,6 @@ LAN Invite: ${inviteUrl}`, 8e3);
           }
           setWorldResources(resources);
           worldResourcesRef.current = resources;
-          setIsLoadingWorld(false);
-          setShowLoadingConfirm(false);
         } else {
           resources?.cleanup();
         }
@@ -17759,8 +17758,6 @@ LAN Invite: ${inviteUrl}`, 8e3);
         if (isMounted) {
           setWorldResources(null);
           setLoadError(err.message || String(err) || "Unknown error occurred during world initialization.");
-          setIsLoadingWorld(false);
-          setShowLoadingConfirm(false);
         }
       });
       return () => {
