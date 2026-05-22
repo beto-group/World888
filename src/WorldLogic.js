@@ -74,11 +74,34 @@ function WorldLogic({ canvasRef, glbBasePath = 'assets/glb/', passcode = null })
       }
       window.HK = await window.HavokPhysics({ wasmBinary: wasmBuffer });
 
+      const adapter = dc?.app?.vault?.adapter;
+      const isBrowser = !adapter || typeof adapter.exists !== 'function';
+
+      // Ensure cat.glb is cached locally before initializing the engine (which loads the model)
+      if (!isBrowser) {
+        const catLocalPath = `${folderPath}/assets/glb/cat.glb`;
+        const catExists = await adapter.exists(catLocalPath);
+        if (!catExists) {
+          const { url, path: glbPath } = DEFAULT_GLB;
+          const catRemote = `${url}${glbPath}cat.glb`;
+          try {
+            console.log('[WorldLogic] Pre-downloading cat.glb from remote:', catRemote);
+            const res = await fetch(catRemote);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const buf  = await res.arrayBuffer();
+            const dir  = `${folderPath}/assets/glb`;
+            if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
+            await adapter.writeBinary(catLocalPath, new Uint8Array(buf));
+            console.log('[WorldLogic] Successfully cached cat.glb locally before engine init');
+          } catch (e) {
+            console.warn('[WorldLogic] Pre-cache of cat.glb failed:', e);
+          }
+        }
+      }
+
       // ── Stage 1: Init Engine (Babylon scene + all systems) ────────────
       gameEngine = Engine.create();
       
-      const adapter = dc?.app?.vault?.adapter;
-      const isBrowser = !adapter || typeof adapter.exists !== 'function';
       const catGlbUrl = isBrowser ? '/glb/cat.glb' : adapter.getResourcePath(`${folderPath}/assets/glb/cat.glb`);
       
       engineResources = await gameEngine.init(canvasRef, passcode, catGlbUrl);
