@@ -287,13 +287,12 @@ function WorldView(props = {}) {
 
   // Handle world loading after user confirmation
   const handleLoadWorld = () => {
-    setShowLoadingConfirm(false);
     setIsLoadingWorld(true);
   };
 
   useEffect(() => {
     // Don't start loading until user confirms and passcode is verified (if needed)
-    if (showLoadingConfirm || !isLoadingWorld || checkingStatus || showPasscodeModal) {
+    if (!isLoadingWorld || checkingStatus || showPasscodeModal) {
       return;
     }
 
@@ -321,6 +320,8 @@ function WorldView(props = {}) {
           }
           setWorldResources(resources);
           worldResourcesRef.current = resources; // Store in ref for cleanup access
+          setIsLoadingWorld(false);
+          setShowLoadingConfirm(false);
         } else {
          // console.log("WorldView: Component unmounted before WorldLogic resolved. Cleaning up resources early.");
           resources?.cleanup(); // Use optional chaining
@@ -331,6 +332,8 @@ function WorldView(props = {}) {
         if (isMounted) {
           setWorldResources(null);
           setLoadError(err.message || String(err) || "Unknown error occurred during world initialization.");
+          setIsLoadingWorld(false);
+          setShowLoadingConfirm(false);
         }
       });
 
