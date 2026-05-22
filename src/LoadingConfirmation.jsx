@@ -11,16 +11,18 @@ function LoadingConfirmation({ onConfirm, onCancel }) {
         const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         const glbFilePath = `${folderPath}/assets/glb/scene888.glb`;
+        const catFilePath = `${folderPath}/assets/glb/cat.glb`;
         
         const adapter = dc.app.vault.adapter;
         let exists = false;
         if (adapter && typeof adapter.exists === 'function') {
-          exists = await adapter.exists(glbFilePath);
+          exists = (await adapter.exists(glbFilePath)) && (await adapter.exists(catFilePath));
         } else {
           // Browser environment fallback
           try {
-            const res = await fetch('/glb/scene888.glb', { method: 'HEAD' });
-            exists = res.ok;
+            const res1 = await fetch('/glb/scene888.glb', { method: 'HEAD' });
+            const res2 = await fetch('/glb/cat.glb', { method: 'HEAD' });
+            exists = res1.ok && res2.ok;
           } catch (_) {
             exists = true; // Fallback to true to allow attempt
           }

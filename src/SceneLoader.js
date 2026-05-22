@@ -352,6 +352,25 @@ async function _loadIntoScene(scene, glbConfig, folderPath) {
         glbUrl = `${url}${glbPath}${file}`;
       }
     }
+
+    // Ensure cat.glb is also cached locally in the same assets folder
+    const catLocalPath = `${folderPath}/assets/glb/cat.glb`;
+    const catExists = await adapter.exists(catLocalPath);
+    if (!catExists) {
+      const catRemote = `${url}${glbPath}cat.glb`;
+      try {
+        console.log('[SceneLoader] Downloading cat.glb from remote:', catRemote);
+        const res = await fetch(catRemote);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf  = await res.arrayBuffer();
+        const dir  = `${folderPath}/assets/glb`;
+        if (!(await adapter.exists(dir))) await adapter.mkdir(dir);
+        await adapter.writeBinary(catLocalPath, new Uint8Array(buf));
+        console.log('[SceneLoader] Successfully cached cat.glb locally');
+      } catch (e) {
+        console.warn('[SceneLoader] Cache of cat.glb failed:', e);
+      }
+    }
   }
 
   // Optional ground mesh

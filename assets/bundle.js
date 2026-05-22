@@ -15171,6 +15171,23 @@ var World888App = (() => {
           glbUrl = `${url}${glbPath}${file}`;
         }
       }
+      const catLocalPath = `${folderPath3}/assets/glb/cat.glb`;
+      const catExists = await adapter.exists(catLocalPath);
+      if (!catExists) {
+        const catRemote = `${url}${glbPath}cat.glb`;
+        try {
+          console.log("[SceneLoader] Downloading cat.glb from remote:", catRemote);
+          const res = await fetch(catRemote);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const buf = await res.arrayBuffer();
+          const dir = `${folderPath3}/assets/glb`;
+          if (!await adapter.exists(dir)) await adapter.mkdir(dir);
+          await adapter.writeBinary(catLocalPath, new Uint8Array(buf));
+          console.log("[SceneLoader] Successfully cached cat.glb locally");
+        } catch (e) {
+          console.warn("[SceneLoader] Cache of cat.glb failed:", e);
+        }
+      }
     }
     let groundMesh = null;
     if (groundOptions?.enable) {
@@ -17074,14 +17091,16 @@ LAN Invite: ${inviteUrl}`, 8e3);
           const activeFile2 = "";
           const folderPath3 = "";
           const glbFilePath = `${folderPath3}/assets/glb/scene888.glb`;
+          const catFilePath = `${folderPath3}/assets/glb/cat.glb`;
           const adapter = window.dc.app.vault.adapter;
           let exists = false;
           if (adapter && typeof adapter.exists === "function") {
-            exists = await adapter.exists(glbFilePath);
+            exists = await adapter.exists(glbFilePath) && await adapter.exists(catFilePath);
           } else {
             try {
-              const res = await fetch("/glb/scene888.glb", { method: "HEAD" });
-              exists = res.ok;
+              const res1 = await fetch("/glb/scene888.glb", { method: "HEAD" });
+              const res2 = await fetch("/glb/cat.glb", { method: "HEAD" });
+              exists = res1.ok && res2.ok;
             } catch (_) {
               exists = true;
             }
