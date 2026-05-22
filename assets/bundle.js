@@ -14503,16 +14503,20 @@ var World888App = (() => {
       _catGlbUrl = catGlbUrl || null;
       _instanceId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
       _channel = _setupChannel();
-      _detectServer().then((baseUrl) => {
-        if (_cleanedUp) return;
-        if (baseUrl) {
-          _serverBase = baseUrl;
-          _sse = _setupSSE(baseUrl);
-          console.log("[MultiplayerSystem] SSE connected to server at", baseUrl);
-        } else {
-          console.log("[MultiplayerSystem] No local server found \u2014 BroadcastChannel only.");
-        }
-      });
+      const _pollForServer = () => {
+        if (_cleanedUp || _serverBase) return;
+        _detectServer().then((baseUrl) => {
+          if (_cleanedUp || _serverBase) return;
+          if (baseUrl) {
+            _serverBase = baseUrl;
+            _sse = _setupSSE(baseUrl);
+            console.log("[MultiplayerSystem] SSE connected to server at", baseUrl);
+          } else {
+            setTimeout(_pollForServer, 3e3);
+          }
+        });
+      };
+      _pollForServer();
       _sendTimer = setInterval(_sendState, SEND_INTERVAL);
       _pruneTimer = setInterval(_pruneStale, PRUNE_INTERVAL);
       _unsubs.push(EventBus.on("player:position", _onPosition));
@@ -16345,18 +16349,18 @@ var World888App = (() => {
                 setLanURL(d.lanURL || "");
                 window.__w888_online = true;
                 console.log(`[World888] Server confirmed online on attempt ${attempts}`);
-              } else if (attempts < 3) {
-                setTimeout(checkStatus, attempts * 500);
+              } else if (attempts < 20) {
+                setTimeout(checkStatus, 500);
               } else {
-                console.warn("[World888] Server failed to return OK status after 3 attempts.");
+                console.warn("[World888] Server failed to return OK status after 20 attempts.");
                 setServerOnline(false);
                 window.__w888_online = false;
               }
             }).catch(() => {
-              if (attempts < 3) {
-                setTimeout(checkStatus, attempts * 500);
+              if (attempts < 20) {
+                setTimeout(checkStatus, 500);
               } else {
-                console.warn("[World888] Server unreachable after 3 attempts.");
+                console.warn("[World888] Server unreachable after 20 attempts.");
                 setServerOnline(false);
                 window.__w888_online = false;
               }

@@ -22,7 +22,6 @@ missing: []
 resources:
   - assets/gifs/world888.clip.gif
   - assets/images/world_888_1.webp
-  - assets/images/world_888_2.webp
 type: DatacoreComponent
 target: Datacore + Browser
 security:

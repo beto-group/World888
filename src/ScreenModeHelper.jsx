@@ -1047,7 +1047,7 @@ const ScreenModeHelper = ({
         globalThis.__w888_server = null; // force restart
         startWorldServer(absFolder + '/assets');
 
-        // Ping up to 3 times to verify if the server started successfully
+        // Ping up to 20 times (10 seconds) to verify if the server started successfully
         let attempts = 0;
         const checkStatus = () => {
           attempts++;
@@ -1061,19 +1061,19 @@ const ScreenModeHelper = ({
                 setLanURL(d.lanURL || '');
                 window.__w888_online = true;
                 console.log(`[World888] Server confirmed online on attempt ${attempts}`);
-              } else if (attempts < 3) {
-                setTimeout(checkStatus, attempts * 500);
+              } else if (attempts < 20) {
+                setTimeout(checkStatus, 500);
               } else {
-                console.warn('[World888] Server failed to return OK status after 3 attempts.');
+                console.warn('[World888] Server failed to return OK status after 20 attempts.');
                 setServerOnline(false);
                 window.__w888_online = false;
               }
             })
             .catch(() => {
-              if (attempts < 3) {
-                setTimeout(checkStatus, attempts * 500);
+              if (attempts < 20) {
+                setTimeout(checkStatus, 500);
               } else {
-                console.warn('[World888] Server unreachable after 3 attempts.');
+                console.warn('[World888] Server unreachable after 20 attempts.');
                 setServerOnline(false);
                 window.__w888_online = false;
               }

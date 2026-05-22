@@ -391,16 +391,23 @@ const MultiplayerSystem = (() => {
     _channel = _setupChannel();
 
     // 2. Always try to find the local server (works from both Obsidian and browser)
-    _detectServer().then(baseUrl => {
-      if (_cleanedUp) return;
-      if (baseUrl) {
-        _serverBase = baseUrl;
-        _sse = _setupSSE(baseUrl);
-        console.log('[MultiplayerSystem] SSE connected to server at', baseUrl);
-      } else {
-        console.log('[MultiplayerSystem] No local server found — BroadcastChannel only.');
-      }
-    });
+    const _pollForServer = () => {
+      if (_cleanedUp || _serverBase) return;
+      _detectServer().then(baseUrl => {
+        if (_cleanedUp || _serverBase) return;
+        if (baseUrl) {
+          _serverBase = baseUrl;
+          _sse = _setupSSE(baseUrl);
+          console.log('[MultiplayerSystem] SSE connected to server at', baseUrl);
+        } else {
+          // If we haven't found it yet, try again in 3 seconds
+          setTimeout(_pollForServer, 3000);
+        }
+      });
+    };
+    
+    // Start polling immediately
+    _pollForServer();
 
     // Timers
     _sendTimer  = setInterval(_sendState, SEND_INTERVAL);
