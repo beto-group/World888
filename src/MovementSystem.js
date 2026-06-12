@@ -13,7 +13,7 @@
 //   - Input handlers only set intent flags on _ps — physics tick reads them
 // ─────────────────────────────────────────────────────────────────────────────
 
-const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md";
 const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
 
 const { EventBus }               = await dc.require(folderPath + "/src/EventBus.js");

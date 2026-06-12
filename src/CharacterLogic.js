@@ -1,4 +1,4 @@
-const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md";
 const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
 const { CameraLogic } = await dc.require(folderPath + "/src/CameraLogic.js");
 const { createConstants } = await dc.require(folderPath + "/src/CharacterConstants.js");

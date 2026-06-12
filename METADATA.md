@@ -20,8 +20,8 @@ repository:
   - https://github.com/beto-group/World888
 missing: []
 resources:
-  - assets/gifs/world888.clip.gif
-  - assets/images/world_888_1.webp
+  - assets/videos/preview.gif
+  - assets/image/preview_1.webp
 type: DatacoreComponent
 target: Datacore + Browser
 security:

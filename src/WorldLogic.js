@@ -4,7 +4,7 @@
 // Was 684 lines → now ~140 lines.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md";
 const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
 
 const { loadScript }      = await dc.require(folderPath + "/src/LoadScript.js");
@@ -143,7 +143,7 @@ function WorldLogic({ canvasRef, glbBasePath = 'assets/glb/', passcode = null })
       }
 
       if (physicsCount === 0 && environmentMeshes.some(m => m instanceof window.BABYLON.Mesh)) {
-        console.warn('[WorldLogic] ⚠️ No physics aggregates applied — collisions will fail!');
+        console.warn('[WorldLogic] [Warning] No physics aggregates applied — collisions will fail!');
       }
 
       // ── Stage 4: Window resize ────────────────────────────────────────

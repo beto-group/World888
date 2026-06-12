@@ -1,9 +1,8 @@
-
 <div align="center">
   <a name="readme-top"></a>
   <img src="https://raw.githubusercontent.com/beto-group/beto.assets/main/BETO.logo.animated.svg?raw=true" alt="LOGO" width="160">
   <h1 align="center">WORLD 888</h1>
-  <h3 align="center"> Pʜʏsɪᴄs Sᴀɴᴅʙᴏx ᴀɴᴅ Mᴜʟᴛɪᴘʟᴀʏᴇʀ Wᴏʀʟᴅ </h3>
+  <h3 align="center"> Physics Sandbox and Multiplayer World </h3>
 </div>
 
 <div align="center">
@@ -13,13 +12,13 @@
   <a href="https://github.com/sponsors/beto-group"><img src="https://img.shields.io/badge/Sponsor-7A46F1?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="SUPPORT US ON GITHUB"></a>
   <br/>
   <!-- BOTTOM GOLD TAXONOMY -->
-  <img src="https://img.shields.io/badge/TARGET-DATACORE-000?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkUxNjUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZWxsaXBzZSBjeD0iMTIiIGN5PSI1IiByeD0iOSIgcnk9IjMiLz48cGF0aCBkPSJNIDMgNXYxNGE5IDMgMCAwIDAgMTggMHYtMTQiLz48cGF0aCBkPSJNIDMgMTJhOSAzIDAgMCAwIDE4IDAiLz48L3N2Zz4=" alt="TARGET">
-  <img src="https://img.shields.io/badge/SECURITY-SANDBOXED-000?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkUxNjUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMnMgOCA0LjUgOCAxMmMwIDUuNS00LjUgMTAtOCAxMEzNCAxNy41IDQgMTRDNCA2LjUgMTIgMTEyIDJ6Ii8+PC9zdmc+" alt="SECURITY">
-  <img src="https://img.shields.io/badge/RUNTIME-PUREJS-000?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkUxNjUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTQ5IDJINjYyIDAgMCAwLTIgMnYxNmEyIDAgMCAwIDAgMiAyaDEyYTIgMiAwIDAgMCAyLTJWNy41TDE0LjUgMnoiLz48cG9seWxpbmUgcG9pbnRzPSIxNCAyIDE0IDggMjAgOCIvPjxsaW5lIHgxPSIxNiIgeDI9IjgiIHkxPSIxMyIgeTI9IjEzIi8+PGxpbmUgeDE9IjE2IiB4Mj0iOCIgeTE9IjE3IiB5Mj0iMTciLz48bGluZSB4MT0iMTAiIHgyPSI4IiB5MT0iOSIgeTI9IjkiLz48L3N2Zz4=" alt="RUNTIME">
+  <img src="https://img.shields.io/badge/TARGET-DATACORE-000?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkUxNjUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZWxsaXBzZSBjeD0iMTIiIGN5PSI1IiByeD0iOSIgcnk9IjMiLz48cGF0aCBkPSJNIDMgNXYxNGE5IDMgMCAwIDAgMTggMHYtMTQiLz48cGF0aCBkPSJNIDMgMTJhOSAzIDAgMCAwIDE4IDAiLz48L3N2Zz4=" alt="TARGET">
+  <img src="https://img.shields.io/badge/SECURITY-SANDBOXED-000?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkUxNjUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMnMgOCA0LjUgOCAxMmMwIDUuNS00LjUgMTAtOCAxMEzNCAxNy41IDQgMTRDNCA2LjUgMTIgMTEyIDJ6Ii8+PC9zdmc+" alt="SECURITY">
+  <img src="https://img.shields.io/badge/RUNTIME-PUREJS-000?style=for-the-badge&logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNGRkUxNjUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTQ5IDJINjYyIDAgMCAwLTIgMnYxNmEyIDAgMCAwIDAgMiAyaDEyYTIgMiAwIDAgMCAyLTJWNy41TDE0LjUgMnoiLz48cG9seWxpbmUgcG9pbnRzPSIxNCAyIDE0IDggMjAgOCIvPjxsaW5lIHgxPSIxNiIgeDI9IjgiIHkxPSIxMyIgeTI9IjEzIi8+PGxpbmUgeDE9IjE2IiB4Mj0iOCIgeTE9IjE3IiB5Mj0iMTciLz48bGluZSB4MT0iMTAiIHgyPSI4IiB5MT0iOSIgeTI9IjkiLz48L3N2Zz4=" alt="RUNTIME">
   <hr>
 </div>
 
-<img src="assets/gifs/world888.clip.gif" alt="World 888 Walkthrough" width="100%">
+<img src="assets/videos/preview.gif" alt="World 888 Walkthrough" width="100%">
 
 <div align="center">
   <p><i>WORLD 888 is a persistent, physics-enabled 3D simulation sandbox built as a native Datacore component, utilizing Babylon.js and the Havok physics engine to provide first-person mechanics, dual-transport multiplayer synchronization, and in-world object control across both Obsidian and modern web browsers.</i></p>
@@ -32,16 +31,16 @@ WORLD 888 brings advanced 3D visualization and real-time physical simulation to 
 ## Features
 
 ### Standalone Web Component & Server
-- **Cross-Platform Play**: Run the environment as a native Obsidian component or as a standalone web application (`http://localhost:8885`).
-- **Node.js Sync Server**: Built-in standalone server (`world888-server.js`) that serves static assets, provides a web entry point, and handles cross-device player synchronization.
+- **Cross-Platform Play**: Run the environment as a native Obsidian component or as a standalone web application (http://localhost:8885).
+- **Node.js Sync Server**: Built-in standalone server (world888-server.js) that serves static assets, provides a web entry point, and handles cross-device player synchronization.
 
 ### Multiplayer Synchronizer
-- **Dual-Transport Sync**: Uses `BroadcastChannel` for zero-latency sync between Obsidian tabs, and SSE + HTTP POST (`EventSource`) for cross-device sync via the local Node server.
-- **Dynamic Player Ghosts**: Remote players are represented using animated `cat.glb` models with unique, dynamically generated HSL color tints based on their connection IDs.
+- **Dual-Transport Sync**: Uses BroadcastChannel for zero-latency sync between Obsidian tabs, and SSE + HTTP POST (EventSource) for cross-device sync via the local Node server.
+- **Dynamic Player Ghosts**: Remote players are represented using animated cat.glb models with unique, dynamically generated HSL color tints based on their connection IDs.
 - **State Animations**: Fully animates ghost players for walking, running, crouching, and sliding based on broadcasted player states.
 
 ### Runtime and Agentic Safety
-- **Dynamic Watchdog Daemon**: Integrates a file-based command watcher loop that monitors `mcp_commands.json` for hot reloading.
+- **Dynamic Watchdog Daemon**: Integrates a file-based command watcher loop that monitors mcp_commands.json for hot reloading.
 - **Multidirectional Pane Modes**: Supports standard embedded, fullscreen browser, window overlay, and picture-in-picture floating panels.
 - **Resource Lifecycle Guard**: Completely disposes of Babylon.js graphics contexts and Havok physics simulations on unmount to prevent system lag.
 
@@ -78,7 +77,16 @@ The package exposes the following files:
 | **[src/PreventDefaultInputs.js](src/PreventDefaultInputs.js)** | Hardened Obsidian key event and Command Palette blocker. |
 | **[server/world888-server.js](server/world888-server.js)** | Standalone Node.js server for static assets and cross-client SSE/POST synchronization. |
 | **[web-src/index.jsx](web-src/index.jsx)** | Web browser entry point that mocks Datacore dependencies. |
-| **[assets/bundle.js](assets/bundle.js)** | Pre-compiled ESBuild browser distribution bundle. |
 | **[METADATA.md](METADATA.md)** | Manifest YAML properties outlining compatibility, runtime parameters, and index categories. |
 | **[CONTRIBUTION.md](CONTRIBUTION.md)** | Developer compilation guidelines and coding standards. |
 | **[LICENSE.md](LICENSE.md)** | MIT permissive distribution license. |
+
+## Previews
+
+| Preview | Description |
+| :--- | :--- |
+| ![Preview 1](assets/image/preview_1.webp) | 3D physics sandbox view rendering local geometry layout. |
+
+## Contributors
+
+- beto.group

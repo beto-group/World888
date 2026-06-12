@@ -482,7 +482,7 @@ async function createExternalWindow() {
       height: 800,
       minWidth: 700,
       minHeight: 500,
-      title: '✨ WORLD 888 - External View',
+      title: 'WORLD 888 - External View',
       backgroundColor: '#0D0D1A',
       frame: isMac ? false : true,
       titleBarStyle: isMac ? 'hiddenInset' : 'default',
@@ -497,7 +497,7 @@ async function createExternalWindow() {
     });
     
     // Resolve absolute path to assets/player_viewer.html
-    const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+    const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md";
     const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
     const absFolderPath = dc.app.vault.adapter.getFullPath 
       ? dc.app.vault.adapter.getFullPath(folderPath) 
@@ -517,7 +517,7 @@ async function createExternalWindow() {
       "const glbUrl = urlParams.get('glb');",
       `const glbUrl = urlParams.get('glb') || "${fileGlbUrl}";`
     );
-
+ 
     externalWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
     externalWindow._requestedMode = null;
     
@@ -539,7 +539,7 @@ async function createExternalWindow() {
     
     externalWindow.once('ready-to-show', () => {
       externalWindow.show();
-      if (typeof Notice !== 'undefined') new Notice("✨ External window opened!", 3000);
+      if (typeof Notice !== 'undefined') new Notice("External window opened!", 3000);
     });
     
     externalWindow.on('closed', () => {
@@ -944,7 +944,7 @@ const ScreenModeHelper = ({
       let filePid = null;
       let pidFilePath = null;
       try {
-        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md';
+        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md';
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         const absFolder = dc.app.vault.adapter.getFullPath
           ? dc.app.vault.adapter.getFullPath(folderPath)
@@ -1059,7 +1059,7 @@ const ScreenModeHelper = ({
       stopWorldServer();
     } else {
       try {
-        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md';
+        const activeFile = dc.resolvePath('WORLD 888.md') || '_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md';
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         const absFolder = dc.app.vault.adapter.getFullPath
           ? dc.app.vault.adapter.getFullPath(folderPath)
@@ -1157,7 +1157,7 @@ const ScreenModeHelper = ({
     } else if (mode === "character") {
       // Open the World 888 player in a system browser window (LAN-ready)
       try {
-        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md";
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         
         const absFolder = dc.app.vault.adapter.getFullPath 
@@ -1187,7 +1187,7 @@ const ScreenModeHelper = ({
         }
 
         if (typeof Notice !== 'undefined') {
-          new Notice(`✨ World 888 opened in browser!\nLocal: http://localhost:${WEB_SERVER_PORT}\nLAN Invite: ${inviteUrl}`, 8000);
+          new Notice(`World 888 opened in browser!\nLocal: http://localhost:${WEB_SERVER_PORT}\nLAN Invite: ${inviteUrl}`, 8000);
         }
 
       } catch (e) {
@@ -1227,7 +1227,7 @@ const ScreenModeHelper = ({
       }
     } else if (mode === "web") {
       try {
-        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+        const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md";
         const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
         const absFolder = dc.app.vault.adapter.getFullPath 
           ? dc.app.vault.adapter.getFullPath(folderPath) 
@@ -1633,7 +1633,7 @@ const ScreenModeHelper = ({
               // Copy to clipboard
               if (navigator.clipboard) {
                 navigator.clipboard.writeText(inviteLink).then(() => {
-                  if (typeof Notice !== 'undefined') new Notice('✨ LAN Invite Link copied to clipboard!', 3000);
+                  if (typeof Notice !== 'undefined') new Notice('LAN Invite Link copied to clipboard!', 3000);
                 }).catch(() => {
                   // Fallback copy using textarea
                   const el = document.createElement('textarea');
@@ -1642,7 +1642,7 @@ const ScreenModeHelper = ({
                   el.select();
                   document.execCommand('copy');
                   document.body.removeChild(el);
-                  if (typeof Notice !== 'undefined') new Notice('✨ LAN Invite Link copied to clipboard!', 3000);
+                  if (typeof Notice !== 'undefined') new Notice('LAN Invite Link copied to clipboard!', 3000);
                 });
               } else {
                 // Fallback copy using textarea
@@ -1652,7 +1652,7 @@ const ScreenModeHelper = ({
                 el.select();
                 document.execCommand('copy');
                 document.body.removeChild(el);
-                if (typeof Notice !== 'undefined') new Notice('✨ LAN Invite Link copied to clipboard!', 3000);
+                if (typeof Notice !== 'undefined') new Notice('LAN Invite Link copied to clipboard!', 3000);
               }
             }}
             title={`Copy LAN Invite Link: ${lanURL}${serverPasscode ? ` (Room: ${serverPasscode})` : ''}`}

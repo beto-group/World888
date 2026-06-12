@@ -3,7 +3,7 @@
 // Replaces the Havok setup spread across HavokPhysics.js and CharacterLogic.js.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/WORLD 888/WORLD 888.md";
+const activeFile = dc.resolvePath("WORLD 888.md") || "_RESOURCES/DATACORE/_DONE/World888/WORLD 888.md";
 const folderPath = activeFile.substring(0, activeFile.lastIndexOf('/'));
 
 const PhysicsSystem = (() => {
